@@ -1,5 +1,5 @@
 """
-Unit tests fro tiledb
+Unit tests for tiledb
 =====================
 
 """
