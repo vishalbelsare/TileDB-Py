@@ -1712,6 +1712,7 @@ cdef class SparseArray(Array):
         except Exception as ex:
             free(c_attr_names)
             raise ex
+
         attr_values = list(values.values())
         cdef size_t ncoords = coords.shape[0]
         cdef char** buffers = <char**> calloc(nattr + 1, sizeof(uintptr_t))
@@ -1735,50 +1736,31 @@ cdef class SparseArray(Array):
 
         cdef int rc = TILEDB_OK
         cdef tiledb_query_t* query_ptr = NULL
-        rc = tiledb_query_create(ctx_ptr, &query_ptr, barray_name, TILEDB_READ)
-        if rc != TILEDB_OK:
-            free(c_attr_names)
-            free(buffers)
-            free(buffer_sizes)
-            check_error(ctx, rc)
-
-        rc = tiledb_query_set_layout(ctx_ptr, query_ptr, TILEDB_GLOBAL_ORDER)
-        if rc != TILEDB_OK:
-            free(c_attr_names)
-            free(buffers)
-            free(buffer_sizes)
-            check_error(ctx, rc)
-
         for i in range(ncoords):
-            if i == 0:
-                rc = tiledb_query_set_buffers(ctx_ptr, query_ptr, c_attr_names,
-                                              nattr + 1, <void**> buffers, buffer_item_sizes)
-            else:
+            if i > 0:
                 for aidx in range(nattr):
                     buffers[aidx] += buffer_item_sizes[aidx]
                 buffers[nattr] += buffer_item_sizes[nattr]
-                rc = tiledb_query_reset_buffers(ctx_ptr, query_ptr,
-                                                <void**> buffers, buffer_item_sizes)
+            rc = tiledb_query_create(ctx_ptr, &query_ptr, barray_name, TILEDB_READ)
             if rc != TILEDB_OK:
-                free(c_attr_names)
-                free(buffers)
-                free(buffer_sizes)
-                check_error(ctx, rc)
-
+                break
+            rc = tiledb_query_set_layout(ctx_ptr, query_ptr, TILEDB_ROW_MAJOR)
+            if rc != TILEDB_OK:
+                break
+            rc = tiledb_query_set_buffers(ctx_ptr, query_ptr, c_attr_names,
+                                          nattr + 1, <void**> buffers, buffer_item_sizes)
+            if rc != TILEDB_OK:
+                break
             with nogil:
                 rc = tiledb_query_submit(ctx_ptr, query_ptr)
-
             if rc != TILEDB_OK:
-                free(c_attr_names)
-                free(buffers)
-                free(buffer_sizes)
-                check_error(ctx, rc)
-
+                break
+            if i < ncoords - 1:
+                tiledb_query_free(ctx_ptr, query_ptr)
         free(c_attr_names)
         free(buffers)
         free(buffer_sizes)
         tiledb_query_free(ctx_ptr, query_ptr)
-
         if rc != TILEDB_OK:
             check_error(ctx, rc)
         return

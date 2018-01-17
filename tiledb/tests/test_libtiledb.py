@@ -31,7 +31,7 @@ class Config(DiskTestCase):
         ctx = t.Ctx(config)
 
     def test_ctx_config(self):
-        ctx = t.Ctx({"sm.tile_cache_size": 100})
+        ctx = t.Ctx(config={"sm.tile_cache_size": 100})
 
     def test_config_bad_param(self):
         config = t.Config()
@@ -42,6 +42,7 @@ class Config(DiskTestCase):
         config = t.Config()
         config["sm.tile_cache_size"] = 100
         del config["sm.tile_cache_size"]
+        ctx = t.Ctx(config)
 
     def test_config_from_file(self):
         config_path = self.path("config")
@@ -519,7 +520,6 @@ class SparseArray(DiskTestCase):
 
         assert_array_equal(T[[2.5, 4.2]], values)
 
-
     def test_sparse_unordered_fp_domain(self):
         ctx = t.Ctx()
         dom = t.Domain(ctx, t.Dim(ctx, "x", domain=(0.0, 10.0), tile=2.0, dtype=float))
@@ -529,8 +529,7 @@ class SparseArray(DiskTestCase):
         values = np.array([3.3, 2.7])
         T[[4.2, 2.5]] = values
 
-        assert_array_equal(T[[2.5, 4.2]], values[::-1])
-
+        assert_array_equal(T[[2.5, 4.2, 20.2]], values[::-1])
 
     def test_multiple_attributes(self):
         ctx = t.Ctx()
