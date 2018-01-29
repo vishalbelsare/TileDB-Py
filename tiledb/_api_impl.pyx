@@ -1,4 +1,3 @@
-from cpython.version cimport PY_MAJOR_VERSION
 from cpython.bytes cimport (PyBytes_GET_SIZE,
                             PyBytes_AS_STRING,
                             PyBytes_FromString,
@@ -26,8 +25,9 @@ cimport numpy as np
 import sys
 from os.path import abspath
 
-# TileDB C API
+# TileDB C API and helpers
 from libtiledb cimport *
+from common cimport *
 
 # Integer types supported by Python / System
 if sys.version_info >= (3, 0):
@@ -49,7 +49,7 @@ IntType = np.dtype(np.int_)
 np.import_array()
 
 
-def version():
+def libtiledb_version():
     cdef:
         int major = 0
         int minor = 0
@@ -58,53 +58,8 @@ def version():
     return major, minor, rev
 
 
-cdef unicode ustring(s):
-    if type(s) is unicode:
-        return <unicode> s
-    elif PY_MAJOR_VERSION < 3 and isinstance(s, bytes):
-        return (<bytes> s).decode('ascii')
-    elif isinstance(s, unicode):
-        return unicode(s)
-    raise TypeError(
-        "ustring() must be a string or a bytes-like object"
-        ", not {0!r}".format(type(s)))
-
-
-class TileDBError(Exception):
-    pass
-
-
-cdef _raise_tiledb_error(tiledb_error_t* err_ptr):
-    cdef const char* err_msg_ptr = NULL
-    ret = tiledb_error_message(err_ptr, &err_msg_ptr)
-    if ret != TILEDB_OK:
-        tiledb_error_free(err_ptr)
-        if ret == TILEDB_OOM:
-            return MemoryError()
-        raise TileDBError("error retrieving error message")
-    cdef unicode message_string = err_msg_ptr.decode('UTF-8', 'strict')
-    tiledb_error_free(err_ptr)
-    raise TileDBError(message_string)
-
-
-cdef _raise_ctx_err(tiledb_ctx_t* ctx_ptr, int rc):
-    if rc == TILEDB_OK:
-        return
-    if rc == TILEDB_OOM:
-        raise MemoryError()
-    cdef int ret
-    cdef tiledb_error_t* err_ptr = NULL
-    ret = tiledb_ctx_get_last_error(ctx_ptr, &err_ptr)
-    if ret != TILEDB_OK:
-        tiledb_error_free(err_ptr)
-        if ret == TILEDB_OOM:
-            raise MemoryError()
-        raise TileDBError("error retrieving error object from ctx")
-    _raise_tiledb_error(err_ptr)
-
-
 cpdef check_error(Ctx ctx, int rc):
-    _raise_ctx_err(ctx.ptr, rc)
+    raise_ctx_err(ctx.ptr, rc)
 
 
 cdef class Config(object):
@@ -125,7 +80,7 @@ cdef class Config(object):
         if rc == TILEDB_OOM:
             raise MemoryError()
         elif rc == TILEDB_ERR:
-            _raise_tiledb_error(err_ptr)
+            raise_tiledb_error(err_ptr)
         assert(config_ptr != NULL)
         self.ptr = config_ptr
 
@@ -151,14 +106,14 @@ cdef class Config(object):
         if rc == TILEDB_OOM:
             raise MemoryError()
         if rc == TILEDB_ERR:
-            _raise_tiledb_error(err_ptr)
+            raise_tiledb_error(err_ptr)
         rc = tiledb_config_load_from_file(config_ptr, bfilename, &err_ptr)
         if rc == TILEDB_OOM:
             tiledb_config_free(config_ptr)
             raise MemoryError()
         if rc == TILEDB_ERR:
             tiledb_config_free(config_ptr)
-            _raise_tiledb_error(err_ptr)
+            raise_tiledb_error(err_ptr)
         config.ptr = config_ptr
         return config
 
@@ -178,7 +133,7 @@ cdef class Config(object):
         if rc == TILEDB_OOM:
             raise MemoryError()
         elif rc == TILEDB_ERR:
-            _raise_tiledb_error(err_ptr)
+            raise_tiledb_error(err_ptr)
         return
 
     def __getitem__(self, object key):
@@ -190,7 +145,7 @@ cdef class Config(object):
         if rc == TILEDB_OOM:
             raise MemoryError()
         elif rc == TILEDB_ERR:
-            _raise_tiledb_error(err_ptr)
+            raise_tiledb_error(err_ptr)
         cdef bytes value = PyBytes_FromString(value_ptr)
         return value.decode('UTF-8')
 
@@ -202,7 +157,7 @@ cdef class Config(object):
         if rc == TILEDB_OOM:
             raise MemoryError()
         elif rc == TILEDB_ERR:
-            _raise_tiledb_error(err_ptr)
+            raise_tiledb_error(err_ptr)
         return
 
 
@@ -227,7 +182,7 @@ cdef class ConfigIter(object):
         if rc == TILEDB_OOM:
             raise MemoryError()
         elif rc == TILEDB_ERR:
-            _raise_tiledb_error(err_ptr)
+            raise_tiledb_error(err_ptr)
         assert(config_iter_ptr != NULL)
         self.config = config
         self.ptr = config_iter_ptr
@@ -242,7 +197,7 @@ cdef class ConfigIter(object):
         if rc == TILEDB_OOM:
             raise MemoryError()
         elif rc == TILEDB_ERR:
-            _raise_tiledb_error(err_ptr)
+            raise_tiledb_error(err_ptr)
         if done > 0:
             raise StopIteration()
         cdef const char* param_ptr = NULL
@@ -251,7 +206,7 @@ cdef class ConfigIter(object):
         if rc == TILEDB_OOM:
             raise MemoryError()
         elif rc == TILEDB_ERR:
-            _raise_tiledb_error(err_ptr)
+            raise_tiledb_error(err_ptr)
         cdef bytes bparam
         cdef bytes bvalue
         if param_ptr == NULL:
@@ -266,7 +221,7 @@ cdef class ConfigIter(object):
         if rc == TILEDB_OOM:
             raise MemoryError()
         elif rc == TILEDB_ERR:
-            _raise_tiledb_error(err_ptr)
+            raise_tiledb_error(err_ptr)
         return (bparam.decode('UTF-8'), bvalue.decode('UTF-8'))
 
 
@@ -298,7 +253,7 @@ cdef class Ctx(object):
             # we assume that the ctx pointer is valid if not OOM
             # the ctx object will be free'd when it goes out of scope
             # after the exception is raised
-            _raise_ctx_err(ctx_ptr, rc)
+            raise_ctx_err(ctx_ptr, rc)
         self.ptr = ctx_ptr
 
     def config(self):

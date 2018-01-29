@@ -121,6 +121,17 @@ setup(
           extra_link_args=LFLAGS,
           extra_compile_args=CXXFLAGS,
           language="c++"
+        ),
+        Extension(
+            "tiledb.common",
+            include_dirs=inc_dirs,
+            define_macros=def_macros,
+            sources=["tiledb/common.pyx"],
+            library_dirs=lib_dirs,
+            libraries=libs,
+            extra_link_args=LFLAGS,
+            extra_compile_args=CXXFLAGS,
+            language="c++"
         )
     ],
     setup_requires=[
