@@ -3,21 +3,22 @@ from tiledb.tests.common import DiskTestCase
 from unittest import TestCase
 
 import tiledb
-from tiledb import libtiledb as t
+from tiledb import api as t
+from tiledb.common import TileDBError
 
 import numpy as np
 from numpy.testing import assert_array_equal
 
 
 def is_group(ctx, path):
-   obj = tiledb.libtiledb.object_type(ctx, path)
+   obj = t.object_type(ctx, path)
    return obj == 2
 
 
 class VersionTest(TestCase):
 
     def test_version(self):
-        v = tiledb.libtiledb_version()
+        v = t.libtiledb_version()
         self.assertIsInstance(v, tuple)
         self.assertTrue(len(v) == 3)
         self.assertTrue(v[0] >= 1, "TileDB major version must be >= 1")
@@ -67,35 +68,35 @@ class GroupTestCase(DiskTestCase):
     def setUp(self):
         super().setUp()
 
-        ctx = tiledb.Ctx()
+        ctx = t.Ctx()
         self.group1 = self.path("group1")
         self.group2 = self.path("group1/group2")
         self.group3 = self.path("group1/group3")
         self.group4 = self.path("group1/group3/group4")
 
-        tiledb.group_create(ctx, self.group1)
-        tiledb.group_create(ctx, self.group2)
-        tiledb.group_create(ctx, self.group3)
-        tiledb.group_create(ctx, self.group4)
+        t.group_create(ctx, self.group1)
+        t.group_create(ctx, self.group2)
+        t.group_create(ctx, self.group3)
+        t.group_create(ctx, self.group4)
 
 
 class GroupTest(GroupTestCase):
 
     def test_is_group(self):
-        ctx = tiledb.Ctx()
+        ctx = t.Ctx()
         self.assertTrue(is_group(ctx, self.group1))
         self.assertTrue(is_group(ctx, self.group2))
         self.assertTrue(is_group(ctx, self.group3))
         self.assertTrue(is_group(ctx, self.group4))
 
     def test_walk_group(self):
-        ctx = tiledb.Ctx()
+        ctx = t.Ctx()
 
         groups = []
         def append_to_groups(path, obj):
             groups.append((path, obj))
 
-        tiledb.walk(ctx, self.path(""), append_to_groups, order="preorder")
+        t.walk(ctx, self.path(""), append_to_groups, order="preorder")
 
         groups.sort()
         self.assertTrue(groups[0][0].endswith(self.group1) and groups[0][1] == "group")
@@ -105,7 +106,7 @@ class GroupTest(GroupTestCase):
 
         groups = []
 
-        tiledb.walk(ctx, self.path(""), append_to_groups, order="postorder")
+        t.walk(ctx, self.path(""), append_to_groups, order="postorder")
 
         self.assertTrue(groups[0][0].endswith(self.group2) and groups[0][1] == "group")
         self.assertTrue(groups[1][0].endswith(self.group4) and groups[1][1] == "group")
@@ -113,25 +114,25 @@ class GroupTest(GroupTestCase):
         self.assertTrue(groups[3][0].endswith(self.group1) and groups[3][1] == "group")
 
     def test_delete_group(self):
-        ctx = tiledb.Ctx()
+        ctx = t.Ctx()
 
-        tiledb.delete(ctx, self.group3)
+        t.delete(ctx, self.group3)
 
         self.assertFalse(is_group(ctx, self.group3))
         self.assertFalse(is_group(ctx, self.group4))
 
     def test_move_group(self):
-        ctx = tiledb.Ctx()
+        ctx = t.Ctx()
 
-        tiledb.move(ctx, self.group4, self.path("group1/group4"))
+        t.move(ctx, self.group4, self.path("group1/group4"))
 
         self.assertTrue(is_group(ctx, self.path("group1/group4")))
         self.assertFalse(is_group(ctx, self.group4))
 
-        with self.assertRaises(tiledb.TileDBError):
-            tiledb.move(ctx, self.path("group1/group4"), self.path("group1/group3"))
+        with self.assertRaises(TileDBError):
+            t.move(ctx, self.path("group1/group4"), self.path("group1/group3"))
 
-        tiledb.move(ctx, self.path("group1/group4"),
+        t.move(ctx, self.path("group1/group4"),
                     self.path("group1/group3"),
                     force=True)
 
@@ -220,7 +221,7 @@ class AttributeTest(TestCase):
         attr1 = t.Attr(ctx, "foo", dtype=float)
         attr2 = t.Attr(ctx, "foo", dtype=int)
 
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             t.Array(ctx, "foobar", domain=dom, attrs=(attr1, attr2))
 
 
@@ -244,7 +245,7 @@ class DenseArrayTest(DiskTestCase):
             t.Dim(ctx, domain=(1, 8), tile=2, dtype=np.float64))
         att = t.Attr(ctx, "val", dtype=np.float64)
 
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             t.DenseArray(ctx, self.path("foo"), domain=dom, attrs=(att,))
 
 
@@ -485,12 +486,12 @@ class DenseArrayTest(DiskTestCase):
 
         # check error ncells length
         V["ints"] = V["ints"][1:2].copy()
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             T[:] = V
 
         # check error attribute does not exist
         V["foo"] = V["ints"].astype(np.int8)
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             T[:] = V
 
 
@@ -595,7 +596,7 @@ class SparseArray(DiskTestCase):
         # check error attribute does not exist
         # TODO: should this be an attribute error?
         V["foo"] = V["ints"].astype(np.int8)
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             T[I, J] = V
 
         # check error ncells length
@@ -807,7 +808,7 @@ class NumpyToArray(DiskTestCase):
         # Cannot create 0-dim arrays in TileDB
         ctx = t.Ctx()
         A = np.array(1)
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             t.DenseArray.from_numpy(ctx, self.path("foo"), A)
 
     def test_to_array1d(self):
@@ -937,7 +938,7 @@ class VFS(DiskTestCase):
         self.assertIsInstance(vfs.supports("s3"), bool)
         self.assertIsInstance(vfs.supports("hdfs"), bool)
 
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             vfs.supports("invalid")
 
     def test_dir(self):
@@ -957,7 +958,7 @@ class VFS(DiskTestCase):
 
         # create nested path
         dir = self.path("foo/bar")
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             vfs.create_dir(dir)
 
         vfs.create_dir(self.path("foo"))
@@ -982,7 +983,7 @@ class VFS(DiskTestCase):
 
         # check nested path
         file = self.path("foo/bar")
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             vfs.touch(file)
 
     def test_move(self):
@@ -1001,7 +1002,7 @@ class VFS(DiskTestCase):
         self.assertTrue(vfs.is_file(self.path("foo/baz")))
 
         # moving to invalid dir should raise an error
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             vfs.move(self.path("foo/baz"), self.path("do_not_exist/baz"))
 
     def test_write_read(self):
@@ -1019,7 +1020,7 @@ class VFS(DiskTestCase):
         self.assertEqual(vfs.read(self.path("baz"), 0, 0), b"")
 
         # read from file that does not exist
-        with self.assertRaises(t.TileDBError):
+        with self.assertRaises(TileDBError):
             vfs.read(self.path("do_not_exist"), 0, 3)
 
     def test_io(self):
