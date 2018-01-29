@@ -26,6 +26,9 @@ cimport numpy as np
 import sys
 from os.path import abspath
 
+# TileDB C API
+from libtiledb cimport *
+
 # Integer types supported by Python / System
 if sys.version_info >= (3, 0):
     _MAXINT = 2 ** 31 - 1

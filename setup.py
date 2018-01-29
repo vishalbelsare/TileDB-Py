@@ -71,11 +71,10 @@ LFLAGS = os.environ.get("LFLAGS", "").split()
 TILEDB_DIR = os.environ.get("TILEDB_DIR", "")
 
 # Sources & libraries
-inc_dirs = []
+inc_dirs = ["tiledb"]
 lib_dirs = []
 libs = ["tiledb"]
 def_macros = []
-sources = ["tiledb/libtiledb.pyx"]
 optional_libs = []
 
 # Pass command line flags to setup.py script
@@ -113,10 +112,10 @@ setup(
     },
     ext_modules=[
         Extension(
-          "tiledb.libtiledb",
+          "tiledb._api_impl",
           include_dirs=inc_dirs,
           define_macros=def_macros,
-          sources=sources,
+          sources=["tiledb/_api_impl.pyx"],
           library_dirs=lib_dirs,
           libraries=libs,
           extra_link_args=LFLAGS,
