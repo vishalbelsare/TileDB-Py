@@ -675,6 +675,7 @@ class SparseArray(DiskTestCase):
         att = t.Attr(ctx, "", dtype=float)
 
         T = t.SparseArray(ctx, self.path("foo"), domain=dom, attrs=(att,))
+        T.dump()
 
         self.assertIsNone(T.nonempty_domain())
 

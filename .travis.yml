@@ -22,6 +22,7 @@ install:
   - popd # ./build/TileDB/build -> ./build/TileDB
   - popd # ./build/TileDB -> ./build
   - popd # ./build -> .
+
   # Build and install extension module
   - pip install -U tox-travis pip setuptools wheel
   - pip install -r requirements_dev.txt
