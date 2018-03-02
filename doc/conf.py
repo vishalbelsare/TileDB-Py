@@ -21,18 +21,18 @@ import os
 import os.path
 # Is this a readthedocs build?
 readthedocs = os.environ.get('READTHEDOCS', None) == 'True'
-if readthedocs:
-    miniconda = '%s/miniconda' % os.environ['HOME']
-    # Install Miniconda
-    if not os.path.isdir(miniconda):
-        import wget
-        wget.download('https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh', out='/tmp/miniconda.sh')
-        subprocess.check_call('bash /tmp/miniconda.sh -b -p %s' % miniconda, shell=True)
-    # Install TileDB
-    subprocess.check_call('''
-        export PATH=$HOME/miniconda/bin:$PATH
-        conda install -y tiledb
-    ''', shell=True)
+# if readthedocs:
+#     miniconda = '%s/miniconda' % os.environ['HOME']
+#     # Install Miniconda
+#     if not os.path.isdir(miniconda):
+#         import wget
+#         wget.download('https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh', out='/tmp/miniconda.sh')
+#         subprocess.check_call('bash /tmp/miniconda.sh -b -p %s' % miniconda, shell=True)
+#     # Install TileDB
+#     subprocess.check_call('''
+#         export PATH=$HOME/miniconda/bin:$PATH
+#         conda install -y tiledb
+#     ''', shell=True)
 
 
 # -- Project information -----------------------------------------------------
