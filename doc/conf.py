@@ -1,39 +1,22 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# Configuration file for the Sphinx documentation builder.
-#
-# This file does only contain a selection of the most common options. For a
-# full list see the documentation:
-# http://www.sphinx-doc.org/en/stable/config
 
-# -- Path setup --------------------------------------------------------------
+# -- Imports configuration -------------------------------------------------
 
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-#
-# import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
-
-import subprocess
 import os
-import os.path
-# Is this a readthedocs build?
-readthedocs = os.environ.get('READTHEDOCS', None) == 'True'
-# if readthedocs:
-#     miniconda = '%s/miniconda' % os.environ['HOME']
-#     # Install Miniconda
-#     if not os.path.isdir(miniconda):
-#         import wget
-#         wget.download('https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh', out='/tmp/miniconda.sh')
-#         subprocess.check_call('bash /tmp/miniconda.sh -b -p %s' % miniconda, shell=True)
-#     # Install TileDB
-#     subprocess.check_call('''
-#         export PATH=$HOME/miniconda/bin:$PATH
-#         conda install -y tiledb
-#     ''', shell=True)
+import sys
+from os.path import abspath, join, dirname
 
+sys.path.insert(0, abspath(join(dirname(__file__))))
+
+# -- ReadTheDocs configuration ---------------------------------------------
+
+# Special handling on ReadTheDocs builds.
+# Some of this code is from https://github.com/robotpy/robotpy-docs/blob/master/conf.py
+readthedocs = os.environ.get('READTHEDOCS', None) == 'True'
+rtd_version = os.environ.get('READTHEDOCS_VERSION', 'latest')
+rtd_version = rtd_version if rtd_version in ['stable', 'latest'] else 'stable'
 
 # -- Project information -----------------------------------------------------
 
@@ -61,6 +44,13 @@ extensions = [
     'sphinx.ext.doctest',
     'sphinx.ext.intersphinx',
 ]
+
+# Mapping for linking between RTD subprojects.
+intersphinx_mapping = {
+    'tiledb': ('https://tiledb-inc-tiledb.readthedocs-hosted.com/en/%s/' % rtd_version, None),
+    'tiledb-py': ('https://tiledb-inc-tiledb.readthedocs-hosted.com/projects/python-api/en/%s/' % rtd_version, None),
+    'python': ('https://docs.python.org/', None)
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -95,29 +85,8 @@ pygments_style = 'friendly'
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-# html_theme = 'alabaster'
-
-# Theme options are theme-specific and customize the look and feel of a theme
-# further.  For a list of options available for each theme, see the
-# documentation.
-#
-# html_theme_options = {}
-
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
-
-# Custom sidebar templates, must be a dictionary that maps document names
-# to template names.
-#
-# The default sidebars (for documents that don't match any pattern) are
-# defined by theme itself.  Builtin themes are using these templates by
-# default: ``['localtoc.html', 'relations.html', 'sourcelink.html',
-# 'searchbox.html']``.
-#
-# html_sidebars = {}
-
+html_logo = '_static/tileDB_uppercase_600_112.png'
+html_favicon = '_static/favicon.ico'
 
 # -- Options for HTMLHelp output ---------------------------------------------
 
@@ -175,10 +144,9 @@ texinfo_documents = [
      'Miscellaneous'),
 ]
 
+# -- Custom Document processing ----------------------------------------------
 
-# -- Extension configuration -------------------------------------------------
-
-# -- Options for intersphinx extension ---------------------------------------
-
-# Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
+# Generate the sidebar automatically so that it is identical across all subprojects.
+# This (and gensidebar.py) from https://github.com/robotpy/robotpy-docs
+import gensidebar
+gensidebar.generate_sidebar({'on_rtd': readthedocs, 'rtd_version': rtd_version}, 'tiledb-py')
