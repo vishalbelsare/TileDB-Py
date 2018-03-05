@@ -1,7 +1,4 @@
 name: libtiledb-env
-channels:
-  - conda-forge
-  - defaults
 dependencies:
   - python=3.4
   - tiledb
