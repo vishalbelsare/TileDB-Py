@@ -71,6 +71,7 @@ build_site() {
   else
       export LD_LIBRARY_PATH="${tiledb}/lib"
   fi
+  export TILEDB_PY_NO_VERSION_CHECK=1
   sphinx-build -E -b html -d ${build_dir}/doctrees -D language=en ${source_dir} ${build_dir}/html || \
       die "could not build sphinx site"
 }
