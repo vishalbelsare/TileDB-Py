@@ -3,7 +3,7 @@ formats:
   - none
 
 conda:
-  file: doc/conda-env.yml
+  file: doc/source/conda-env.yml
 
 python:
   version: 3
