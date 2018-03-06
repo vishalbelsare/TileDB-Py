@@ -1149,7 +1149,7 @@ cdef class Domain(object):
     """TileDB Domain class object
 
     :param tiledb.Ctx ctx: A TileDB Context
-    :param *dims: one or more tiledb.Dim objects up to the Domains rank
+    :param \*dims: one or more tiledb.Dim objects up to the Domains rank
     :raises TypeError: All dimensions must have the same dtype
     :raises: :py:exc:`libtiledb.TileDBError`
 
@@ -2169,7 +2169,7 @@ cdef class DenseArray(ArraySchema):
         :param tiledb.Ctx ctx: A TileDB Context
         :param str uri: URI for the TileDB array resource
         :param numpy.ndarray array: dense numpy array to persist
-        :param **kw: additional arguments to pass to the DenseArray constructor
+        :param \*\*kw: additional arguments to pass to the DenseArray constructor
         :rtype: tiledb.DenseArray
         :return: A DenseArray with a single anonymous attribute
         :raises TypeError: cannot convert `uri` to unicode string
