@@ -11,7 +11,7 @@
 source_dir="source"
 build_dir="source/_build"
 venv_dir="venv"
-ext_dir="../../"
+ext_dir="../"
 
 die() {
   echo "$@" 1>&2 ; popd 2>/dev/null; exit 1
@@ -28,7 +28,7 @@ Usage: '"$0"' [<options>]
 Options: [defaults in brackets after descriptions]
 Configuration:
     --help                          print this message
-    --tiledb=PATH                   path to TileDB repo root
+    --tiledb=PATH                   (required) path to TileDB repo root
 '
     exit 10
 }
@@ -46,7 +46,7 @@ while test $# != 0; do
 done
 
 if [ ! -d "${tiledb}" ]; then
-    die "invalid tiledb directory"
+    die "invalid tiledb installation directory (use --tiledb)"
 fi
 
 setup_venv() {
@@ -61,13 +61,18 @@ setup_venv() {
 
 build_ext() {
     pushd "${ext_dir}"
-    pip install tiledb || die "could not install tiledb-py"
+    python setup.py install --tiledb="${tiledb}" || die "could not install tiledb-py"
     popd
 }
 
 build_site() {
-    sphinx-build -E -b html -d ${build_dir}/doctrees -D language=en ${source_dir} ${build_dir}/html || \
-        die "could not build sphinx site"
+  if [[ $OSTYPE == darwin* ]]; then
+      export DYLD_LIBRARY_PATH="${tiledb}/lib"
+  else
+      export LD_LIBRARY_PATH="${tiledb}/lib"
+  fi
+  sphinx-build -E -b html -d ${build_dir}/doctrees -D language=en ${source_dir} ${build_dir}/html || \
+      die "could not build sphinx site"
 }
 
 run() {
