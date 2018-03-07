@@ -349,7 +349,7 @@ cdef class Config(object):
 
         :param str prefix: return only parameters with a given prefix
         :rtype: dict
-        :return: Config parameter / values as a a Python :py:class:`dict`
+        :return: Config parameter / values as a a Python dict
 
         """
         return dict(ConfigItems(self, prefix=prefix))
@@ -521,7 +521,7 @@ cdef class Ctx(object):
     A TileDB context wraps a TileDB storage manager.
 
     :param config: Initialize Ctx with given config parameters
-    :type config: tiledb.Config or :py:class:`dict`
+    :type config: tiledb.Config or dict
     """
 
     cdef tiledb_ctx_t* ptr
@@ -3243,7 +3243,7 @@ cdef class VFS(object):
 
     :param tiledb.Ctx ctx: The TileDB Context
     :param config: Override `ctx` VFS configurations with updated values in config.
-    :type config: tiledb.Config or :py:class:`dict`
+    :type config: tiledb.Config or dict
 
     """
 
