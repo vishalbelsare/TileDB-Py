@@ -83,9 +83,7 @@ pygments_style = 'friendly'
 
 # -- Options for HTML output -------------------------------------------------
 
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
+html_static_path = ['_static']
 html_logo = '_static/tileDB_uppercase_600_112.png'
 html_favicon = '_static/favicon.ico'
 
@@ -158,3 +156,8 @@ texinfo_documents = [
 # This (and gensidebar.py) from https://github.com/robotpy/robotpy-docs
 import gensidebar
 gensidebar.generate_sidebar({'on_rtd': readthedocs, 'rtd_version': rtd_version}, 'tiledb-py')
+
+# -- Custom setup -----------------------------------------------------------
+
+def setup(app):
+    app.add_stylesheet('custom.css')
