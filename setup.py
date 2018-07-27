@@ -271,8 +271,8 @@ class LazyCommandClass(dict):
 def setup_requires():
     req = ['cython>=0.27',
            'numpy>=1.7',
-           'setuptools>=18.0',
-           'setuptools-scm>=1.5.4',
+           'setuptools>18.0',
+           'setuptools-scm>1.5.4'
            'wheel>=0.30']
     tiledb_path = [TILEDB_PATH] if TILEDB_PATH != '' else []
     if not libtiledb_exists(tiledb_path):
