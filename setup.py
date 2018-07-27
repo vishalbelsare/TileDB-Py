@@ -31,7 +31,7 @@ from pkg_resources import resource_filename
 import sys
 from sys import version_info as ver
 
-TILEDB_VERSION = "dev"
+TILEDB_VERSION = "1.3.1"
 
 # Directory containing this file
 CONTAINING_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -272,7 +272,7 @@ def setup_requires():
     req = ['cython>=0.27',
            'numpy>=1.7',
            'setuptools>=18.0',
-           'setuptools_scm>=1.5.4',
+           'setuptools-scm>=1.5.4',
            'wheel>=0.30']
     tiledb_path = [TILEDB_PATH] if TILEDB_PATH != '' else []
     if not libtiledb_exists(tiledb_path):
