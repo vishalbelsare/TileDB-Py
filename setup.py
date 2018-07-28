@@ -48,7 +48,7 @@ def libtiledb_exists(library_dirs):
     Checks the given list of paths and returns true if any contain the TileDB library.
     :return: The path to the TileDB library, or None.
     """
-
+    print("DEBUG LIBRARY_DIRS: ", library_dirs)
     if len(library_dirs) > 0:
         names = libtiledb_library_names()
         paths = [os.path.join(d, n) for d in library_dirs for n in names]
@@ -118,6 +118,7 @@ def build_libtiledb(src_dir):
     cmake_cmd = ["cmake", "-DCMAKE_INSTALL_PREFIX={}".format(libtiledb_install_dir),
                  "-DCMAKE_BUILD_TYPE=Release",
                  "-DTILEDB_S3=ON",
+                 "-DTILEDB_TESTS=OFF"
                  ".."]
 
     have_make = True
@@ -273,8 +274,7 @@ def setup_requires():
            'numpy>=1.7',
            'setuptools_scm',
            'wheel>=0.30']
-    tiledb_path = [TILEDB_PATH] if TILEDB_PATH != '' else []
-    if not libtiledb_exists(tiledb_path):
+    if not libtiledb_exists(lib_dirs):
         req.append('cmake>=3.11.0')
     return req
 
@@ -313,7 +313,8 @@ for arg in args:
         sys.argv.remove(arg)
 
 if TILEDB_PATH != '':
-    lib_dirs += [os.path.join(TILEDB_PATH, 'lib')]
+    lib_dirs += [os.path.join(TILEDB_PATH, 'lib'),
+                 os.path.join(TILEDB_PATH, 'lib64')]
     inc_dirs += [os.path.join(TILEDB_PATH, 'include')]
 
 with open('README.rst') as f:
