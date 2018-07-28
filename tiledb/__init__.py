@@ -14,9 +14,12 @@ if os.name == "posix":
 try:
     lib_dir = os.path.join(os.path.dirname(__file__), "native")
     ctypes.CDLL(os.path.join(lib_dir, lib_name))
-except OSError as e:
+except OSError:
     # Otherwise try loading by name only.
-    ctypes.CDLL(lib_name)
+    try:
+        ctypes.CDLL(lib_name)
+    except OSError:
+        ctypes.CDLL(os.path.join("lib64", lib_name))
 
 from .libtiledb import (
      Ctx,
