@@ -35,7 +35,7 @@ import sys
 from sys import version_info as ver
 
 # Target branch
-TILEDB_VERSION = "dev"
+TILEDB_VERSION = "d91a2dc031646ca5a9336d7040611db33df644ca"
 
 # Use `setup.py [] --debug` for a debug build of libtiledb
 TILEDB_DEBUG_BUILD = False
