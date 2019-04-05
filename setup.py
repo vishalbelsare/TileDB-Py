@@ -419,7 +419,7 @@ for arg in args:
         TILEDB_DEBUG_BUILD = True
         sys.argv.remove(arg)
 
-CXXFLAGS=+=['-Wl,-rpath,native']
+CXXFLAGS+=['-Wl,-rpath,native']
 
 if TILEDB_PATH != '':
     LIB_DIRS += [os.path.join(TILEDB_PATH, 'lib')]
