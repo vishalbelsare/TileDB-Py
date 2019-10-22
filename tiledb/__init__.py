@@ -36,8 +36,6 @@ from .libtiledb import (
      KVSchema,
      KV,
      ArraySchema,
-     DenseArray,
-     SparseArray,
      TileDBError,
      VFS,
      FileIO,
@@ -66,6 +64,8 @@ from .libtiledb import (
      stats_reset,
      stats_dump,
 )
+
+from .array import DenseArray, SparseArray
 
 from .highlevel import (
      open,
