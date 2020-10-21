@@ -56,7 +56,9 @@ TILEDBPY_MODULAR = False
 
 # Allow to override TILEDB_FORCE_ALL_DEPS with environment variable
 TILEDB_FORCE_ALL_DEPS = "TILEDB_FORCE_ALL_DEPS" in os.environ
-TILEDB_SERIALIZATION = "TILEDB_SERIALIZATION" in os.environ
+TILEDB_SERIALIZATION = "ON"
+if "TILEDB_SERIALIZATION" in os.environ:
+    TILEDB_SERIALIZATION = os.environ.get("TILEDB_SERIALIZATION")
 CMAKE_GENERATOR = os.environ.get("CMAKE_GENERATOR", None)
 
 # Directory containing this file
@@ -184,7 +186,7 @@ def build_libtiledb(src_dir):
                     "-DTILEDB_CPP_API=ON",
                     "-DTILEDB_LOG_OUTPUT_ON_FAILURE=ON",
                     "-DTILEDB_FORCE_ALL_DEPS:BOOL={}".format("ON" if TILEDB_FORCE_ALL_DEPS else "OFF"),
-                    "-DTILEDB_SERIALIZATION:BOOL={}".format("ON" if TILEDB_SERIALIZATION else "OFF")
+                    "-DTILEDB_SERIALIZATION:BOOL={}".format("ON" if TILEDB_SERIALIZATION else "ON")
                     ]
 
     extra_cmake_args = os.environ.get("CMAKE_ARGS", [])

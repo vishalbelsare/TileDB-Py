@@ -348,6 +348,26 @@ def write_array_metadata(array, attr_metadata = None, index_metadata = None):
         index_md_dict = {n: str(t) for n,t in index_metadata.items()}
         array.meta['__pandas_index_dims'] = json.dumps(index_md_dict)
 
+def dataframe_to_np_arrays(dataframe, fillna=None):
+    print("fillna here: ", fillna)
+    import pandas as pd
+    if hasattr(pd, 'StringDtype'):
+        # version > 1.0. StringDtype introduced in pandas 1.0
+        ret = dict()
+        for k,v in dataframe.to_dict(orient='series').items():
+            if pd.api.types.is_extension_array_dtype(v):
+                if fillna is None or not k in fillna:
+                    print("got fillna: ", fillna)
+                    raise ValueError("Missing 'fillna' value for column '{}' with pandas extension dtype".format(k))
+                ret[k] = v.to_numpy(na_value=fillna[k])
+            else:
+                ret[k] = v.to_numpy()
+    else:
+        # version < 1.0
+        ret = {k: v.values for k,v in dataframe.to_dict(orient='series').items()}
+
+    return ret
+
 def from_dataframe(uri, dataframe, **kwargs):
     # deprecated in 0.6.3
     warnings.warn("tiledb.from_dataframe is deprecated; please use .from_pandas",
@@ -389,7 +409,7 @@ def from_pandas(uri, dataframe, **kwargs):
     tile = tiledb_args.get('tile', None)
     nrows = tiledb_args.get('nrows', None)
     row_start_idx = tiledb_args.get('row_start_idx', None)
-    fillna = tiledb_args.pop('fillna', None)
+    fillna = tiledb_args.get('fillna', None)
     date_spec = tiledb_args.pop('date_spec', None)
     column_types = tiledb_args.pop('column_types', None)
 
@@ -473,8 +493,7 @@ def from_pandas(uri, dataframe, **kwargs):
             write_array_metadata(A, attr_metadata, index_metadata)
 
     if write:
-        write_dict = {k: v.values for k,v in dataframe.to_dict(orient='series').items()}
-
+        write_dict = dataframe_to_np_arrays(dataframe, fillna=fillna)
 
         if tiledb_args.get('debug', True):
             print("`tiledb.read_pandas` writing '{}' rows".format(len(dataframe)))
