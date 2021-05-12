@@ -40,7 +40,8 @@ public:
   PyQueryCondition(const string &attribute_name, const string &condition_value,
                    tiledb_query_condition_op_t op, py::object ctx) {
     try {
-      init_private_attrs(ctx);
+      init_ctx(ctx);
+      qc_ = shared_ptr<tiledb::QueryCondition>(new QueryCondition(ctx_));
       qc_->init(attribute_name, condition_value, op);
     } catch (TileDBError &e) {
       TPY_ERROR_LOC(e.what());
@@ -51,14 +52,27 @@ public:
   PyQueryCondition(const string &attribute_name, T condition_value,
                    tiledb_query_condition_op_t op, py::object ctx) {
     try {
-      init_private_attrs(ctx);
+      init_ctx(ctx);
+      qc_ = shared_ptr<tiledb::QueryCondition>(new QueryCondition(ctx_));
       qc_->init(attribute_name, &condition_value, sizeof(condition_value), op);
     } catch (TileDBError &e) {
       TPY_ERROR_LOC(e.what());
     }
   }
 
-  void init_private_attrs(py::object ctx) {
+  PyQueryCondition(const QueryCondition c_query_condition,
+                   tiledb_ctx_t *_c_ctx_, Context _ctx_) {
+    try {
+      c_ctx_ = _c_ctx_;
+      ctx_ = _ctx_;
+      qc_ = shared_ptr<tiledb::QueryCondition>(
+          new QueryCondition(c_query_condition));
+    } catch (TileDBError &e) {
+      TPY_ERROR_LOC(e.what());
+    }
+  }
+
+  void init_ctx(py::object ctx) {
     if (ctx.is(py::none())) {
       auto tiledblib = py::module::import("tiledb");
       auto default_ctx = tiledblib.attr("default_ctx");
@@ -71,14 +85,13 @@ public:
       TPY_ERROR_LOC("Invalid context pointer!");
 
     ctx_ = Context(c_ctx_, false);
-
-    qc_ = shared_ptr<tiledb::QueryCondition>(new QueryCondition(ctx_));
   }
 
-  QueryCondition
-  combine(const QueryCondition &rhs,
+  PyQueryCondition
+  combine(PyQueryCondition rhs,
           tiledb_query_condition_combination_op_t combination_op) const {
-    return qc_->combine(rhs, combination_op);
+    QueryCondition combined_qc = qc_->combine(*rhs.qc_, combination_op);
+    return PyQueryCondition(combined_qc, c_ctx_, ctx_);
   }
 }; // namespace tiledbpy
 
@@ -112,6 +125,11 @@ PYBIND11_MODULE(_query_condition, m) {
       .value("TILEDB_GE", TILEDB_GE)
       .value("TILEDB_EQ", TILEDB_EQ)
       .value("TILEDB_NE", TILEDB_NE)
+      .export_values();
+
+  py::enum_<tiledb_query_condition_combination_op_t>(
+      m, "tiledb_query_condition_combination_op_t", py::arithmetic())
+      .value("TILEDB_AND", TILEDB_AND)
       .export_values();
 }
 }; // namespace tiledbpy

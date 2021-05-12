@@ -14,8 +14,9 @@ filtering query results on attribute values.
 class QueryCondition(ast.NodeVisitor):
     def __init__(self, expression):
         tree = ast.parse(expression)
+        print(ast.dump(tree))
         self.raw_str = expression
-        self.qc = self.visit(tree.body[0])
+        self._c_obj = self.visit(tree.body[0])
 
     def visit_Compare(self, node):
         AST_TO_TILEDB = {
@@ -27,18 +28,22 @@ class QueryCondition(ast.NodeVisitor):
             ast.NotEq: qc.TILEDB_NE,
         }
 
-        REVERSE_OP = {
-            qc.TILEDB_GT: qc.TILEDB_LT,
-            qc.TILEDB_GE: qc.TILEDB_LE,
-            qc.TILEDB_LT: qc.TILEDB_GT,
-            qc.TILEDB_LE: qc.TILEDB_GE,
-        }
+        try:
+            op = AST_TO_TILEDB[type(node.ops[0])]
+        except KeyError:
+            raise ValueError("Unsupported comparison operator.")
 
-        op = AST_TO_TILEDB[type(node.ops[0])]
         att = self.visit(node.left)
         val = self.visit(node.comparators[0])
 
         if not isinstance(att, ast.Name):
+            REVERSE_OP = {
+                qc.TILEDB_GT: qc.TILEDB_LT,
+                qc.TILEDB_GE: qc.TILEDB_LE,
+                qc.TILEDB_LT: qc.TILEDB_GT,
+                qc.TILEDB_LE: qc.TILEDB_GE,
+            }
+
             op = REVERSE_OP[op]
             att, val = val, att
 
@@ -49,6 +54,22 @@ class QueryCondition(ast.NodeVisitor):
             raise ValueError("Malformed query expression.")
 
         return qc.qc(att, val, op)
+
+    def visit_BoolOp(self, node):
+        AST_TO_TILEDB = {ast.And: qc.TILEDB_AND}
+
+        try:
+            op = AST_TO_TILEDB[type(node.op)]
+        except KeyError:
+            raise ValueError(
+                'Unsupported Boolean operator. Only "and" is currently supported.'
+            )
+
+        result = self.visit(node.values[0])
+        for value in node.values[1:]:
+            result = result.combine(self.visit(value), op)
+
+        return result
 
     def visit_Name(self, node):
         return node
@@ -65,7 +86,7 @@ class QueryCondition(ast.NodeVisitor):
 
 if __name__ == "__main__":
     print(QueryCondition("foo > 5"))
-    print(QueryCondition("1.324 <= baz"))
+    print(QueryCondition(""))
     print(QueryCondition("bar == 'asdf'"))
 
     try:
@@ -73,4 +94,4 @@ if __name__ == "__main__":
     except ValueError:
         print('Purposely errored QueryCondition("1.324 < 1").')
 
-    print(QueryCondition("1.324 <= baz and bar == 'asdf'"))
+    print(QueryCondition("1.324 <= baz and 1.324 <= baz and bar == 'asdf'"))
