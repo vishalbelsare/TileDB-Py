@@ -1,8 +1,5 @@
 import ast
-import typing
-from pandas.core.base import DataError
 
-import tiledb
 from tiledb import _query_condition as qc
 
 """
@@ -12,9 +9,52 @@ filtering query results on attribute values.
 
 
 class QueryCondition(ast.NodeVisitor):
+    """
+    Class representing a TileDB query condition object for attribute filtering
+    pushdown. Set the query condition with a string representing an expression
+    as defined by the grammar below. A more straight forward example of usage is
+    given beneath.
+
+    BNF
+    ---
+    An expression is made up of one or more Boolean expressions. Multiple Boolean
+    expressions are chained together with Boolean operators.
+
+        exp ::= bool_expr | bool_expr bool_op exp
+
+    A Boolean expression contains a comparison operator. The operator works on a
+    TileDB attribute name and value.
+
+        bool_expr ::= attr compare_op val | val compare_op attr
+
+    "and" is the only Boolean operator supported at the moment. We intend to
+    support "or" and "not" in future releases.
+
+        bool_op ::= and
+
+    All comparison operators are supported.
+
+        compare_op ::= < | > | <= | >= | == | !=
+
+    TileDB attribute names are strings (no quotes).
+
+        attr ::= <str>
+
+    Values are any Python-valid number or a string enclosed in quotes.
+
+        val ::= <num> | "<str>"
+
+    Example
+    -------
+    with tiledb.open(uri, mode="r") as A:
+        # select cells where the attribute values for foo are less than 5,
+        # baz greater to or equal to 1.324, and bar equal to string asdf.
+        qc = QueryCondition("foo > 5 and 'asdf' == bar")
+        A.query(attrs_filter=qc)
+    """
+
     def __init__(self, expression):
         tree = ast.parse(expression)
-        print(ast.dump(tree))
         self.raw_str = expression
         self._c_obj = self.visit(tree.body[0])
 
@@ -82,16 +122,3 @@ class QueryCondition(ast.NodeVisitor):
 
     def __repr__(self) -> str:
         return f'QueryCondition("{self.raw_str}")'
-
-
-if __name__ == "__main__":
-    print(QueryCondition("foo > 5"))
-    print(QueryCondition(""))
-    print(QueryCondition("bar == 'asdf'"))
-
-    try:
-        QueryCondition("1.324 < 1")
-    except ValueError:
-        print('Purposely errored QueryCondition("1.324 < 1").')
-
-    print(QueryCondition("1.324 <= baz and 1.324 <= baz and bar == 'asdf'"))

@@ -1,8 +1,5 @@
-
-#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
-#include <pybind11/stl.h>
 
 #include <exception>
 
@@ -34,43 +31,10 @@ private:
 public:
   tiledb_ctx_t *c_ctx_;
 
-public:
-  PyQueryCondition() = delete;
-
-  PyQueryCondition(const string &attribute_name, const string &condition_value,
-                   tiledb_query_condition_op_t op, py::object ctx) {
-    try {
-      init_ctx(ctx);
-      qc_ = shared_ptr<tiledb::QueryCondition>(new QueryCondition(ctx_));
-      qc_->init(attribute_name, condition_value, op);
-    } catch (TileDBError &e) {
-      TPY_ERROR_LOC(e.what());
-    }
-  }
-
-  template <typename T>
-  PyQueryCondition(const string &attribute_name, T condition_value,
-                   tiledb_query_condition_op_t op, py::object ctx) {
-    try {
-      init_ctx(ctx);
-      qc_ = shared_ptr<tiledb::QueryCondition>(new QueryCondition(ctx_));
-      qc_->init(attribute_name, &condition_value, sizeof(condition_value), op);
-    } catch (TileDBError &e) {
-      TPY_ERROR_LOC(e.what());
-    }
-  }
-
-  PyQueryCondition(const QueryCondition c_query_condition,
-                   tiledb_ctx_t *_c_ctx_, Context _ctx_) {
-    try {
-      c_ctx_ = _c_ctx_;
-      ctx_ = _ctx_;
-      qc_ = shared_ptr<tiledb::QueryCondition>(
-          new QueryCondition(c_query_condition));
-    } catch (TileDBError &e) {
-      TPY_ERROR_LOC(e.what());
-    }
-  }
+private:
+  PyQueryCondition(shared_ptr<QueryCondition> _qc, tiledb_ctx_t *_c_ctx,
+                   Context _ctx)
+      : ctx_(_ctx), qc_(_qc), c_ctx_(_c_ctx) {}
 
   void init_ctx(py::object ctx) {
     if (ctx.is(py::none())) {
@@ -87,11 +51,38 @@ public:
     ctx_ = Context(c_ctx_, false);
   }
 
+public:
+  PyQueryCondition() = delete;
+
+  PyQueryCondition(const string &attribute_name, const string &condition_value,
+                   tiledb_query_condition_op_t op, py::object ctx) {
+    try {
+      init_ctx(ctx);
+      qc_ = shared_ptr<QueryCondition>(new QueryCondition(ctx_));
+      qc_->init(attribute_name, condition_value, op);
+    } catch (TileDBError &e) {
+      TPY_ERROR_LOC(e.what());
+    }
+  }
+
+  template <typename T>
+  PyQueryCondition(const string &attribute_name, T condition_value,
+                   tiledb_query_condition_op_t op, py::object ctx) {
+    try {
+      init_ctx(ctx);
+      qc_ = shared_ptr<QueryCondition>(new QueryCondition(ctx_));
+      qc_->init(attribute_name, &condition_value, sizeof(condition_value), op);
+    } catch (TileDBError &e) {
+      TPY_ERROR_LOC(e.what());
+    }
+  }
+
   PyQueryCondition
   combine(PyQueryCondition rhs,
           tiledb_query_condition_combination_op_t combination_op) const {
-    QueryCondition combined_qc = qc_->combine(*rhs.qc_, combination_op);
-    return PyQueryCondition(combined_qc, c_ctx_, ctx_);
+    auto qc = shared_ptr<QueryCondition>(
+        new QueryCondition(qc_->combine(*(rhs.qc_), combination_op)));
+    return PyQueryCondition(qc, c_ctx_, ctx_);
   }
 }; // namespace tiledbpy
 
