@@ -29,12 +29,12 @@ private:
   shared_ptr<QueryCondition> qc_;
 
 public:
-  tiledb_ctx_t *c_ctx_;
+  shared_ptr<tiledb_ctx_t> c_ctx_;
 
 private:
-  PyQueryCondition(shared_ptr<QueryCondition> _qc, tiledb_ctx_t *_c_ctx,
-                   Context _ctx)
-      : ctx_(_ctx), qc_(_qc), c_ctx_(_c_ctx) {}
+  PyQueryCondition(shared_ptr<QueryCondition> qc,
+                   shared_ptr<tiledb_ctx_t> c_ctx, const Context &ctx)
+      : ctx_(ctx), qc_(qc), c_ctx_(c_ctx) {}
 
   void init_ctx(py::object ctx) {
     if (ctx.is(py::none())) {
@@ -43,12 +43,12 @@ private:
       ctx = default_ctx();
     }
 
-    tiledb_ctx_t *c_ctx_ = (py::capsule)ctx.attr("__capsule__")();
-
-    if (c_ctx_ == nullptr)
+    tiledb_ctx_t *c_ctx;
+    if ((c_ctx = (py::capsule)ctx.attr("__capsule__")()) == nullptr)
       TPY_ERROR_LOC("Invalid context pointer!");
 
-    ctx_ = Context(c_ctx_, false);
+    ctx_ = Context(c_ctx, false);
+    c_ctx_ = ctx_.ptr();
   }
 
 public:
