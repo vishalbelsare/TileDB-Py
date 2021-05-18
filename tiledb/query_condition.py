@@ -1,5 +1,6 @@
 import ast
 
+import tiledb
 from tiledb import _query_condition as qc
 
 """
@@ -71,7 +72,7 @@ class QueryCondition(ast.NodeVisitor):
         try:
             op = AST_TO_TILEDB[type(node.ops[0])]
         except KeyError:
-            raise ValueError("Unsupported comparison operator.")
+            raise tiledb.TileDBError("Unsupported comparison operator.")
 
         att = self.visit(node.left)
         val = self.visit(node.comparators[0])
@@ -82,6 +83,8 @@ class QueryCondition(ast.NodeVisitor):
                 qc.TILEDB_GE: qc.TILEDB_LE,
                 qc.TILEDB_LT: qc.TILEDB_GT,
                 qc.TILEDB_LE: qc.TILEDB_GE,
+                qc.TILEDB_EQ: qc.TILEDB_EQ,
+                qc.TILEDB_NE: qc.TILEDB_NE,
             }
 
             op = REVERSE_OP[op]
@@ -91,7 +94,7 @@ class QueryCondition(ast.NodeVisitor):
             att = att.id
             val = val.value
         else:
-            raise ValueError("Malformed query expression.")
+            raise tiledb.TileDBError("Malformed query expression.")
 
         return qc.qc(att, val, op)
 
@@ -101,7 +104,7 @@ class QueryCondition(ast.NodeVisitor):
         try:
             op = AST_TO_TILEDB[type(node.op)]
         except KeyError:
-            raise ValueError(
+            raise tiledb.TileDBError(
                 'Unsupported Boolean operator. Only "and" is currently supported.'
             )
 

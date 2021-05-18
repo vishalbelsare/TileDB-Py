@@ -4447,7 +4447,7 @@ cdef class Query(object):
     See documentation of Array.query
     """
 
-    def __init__(self, array, attrs=None, dims=None,
+    def __init__(self, array, attrs=None, attr_cond=None, dims=None,
                  coords=False, index_col=True,
                  order=None, use_arrow=None, return_arrow=False,
                  return_incomplete=False):
@@ -4476,6 +4476,7 @@ cdef class Query(object):
                 if not array.schema.has_attr(name):
                     raise TileDBError(f"Selected attribute does not exist: '{name}'")
         self.attrs = attrs
+        self.attr_cond = attr_cond
 
         if order == None:
             if array.schema.sparse:
@@ -4510,6 +4511,11 @@ cdef class Query(object):
     def attrs(self):
         """List of attributes to include in Query."""
         return self.attrs
+    
+    @property
+    def attr_cond(self):
+        """QueryCondition used to filter attributes in Query."""
+        return self.attr_cond
 
     @property
     def dims(self):
@@ -4659,7 +4665,7 @@ cdef class DenseArrayImpl(Array):
         else:
             return "DenseArray(uri={0!r}, mode=closed)".format(self.uri)
 
-    def query(self, attrs=None, dims=None, coords=False, order='C',
+    def query(self, attrs=None, attr_cond=None, dims=None, coords=False, order='C',
               use_arrow=None, return_arrow=False, return_incomplete=False):
         """
         Construct a proxy Query object for easy subarray queries of cells
@@ -4671,6 +4677,7 @@ cdef class DenseArrayImpl(Array):
         :param attrs: the DenseArray attributes to subselect over.
             If attrs is None (default) all array attributes will be returned.
             Array attributes can be defined by name or by positional index.
+        :param attr_cond: the QueryCondition to filter attributes on.
         :param dims: the DenseArray dimensions to subselect over. If dims is None (default)
             then no dimensions are returned, unless coords=True.
         :param coords: if True, return array of coodinate value (default False).
@@ -4706,8 +4713,9 @@ cdef class DenseArrayImpl(Array):
         """
         if not self.isopen or self.mode != 'r':
             raise TileDBError("DenseArray is not opened for reading")
-        return Query(self, attrs=attrs, dims=dims, coords=coords, order=order,
-                     use_arrow=use_arrow, return_arrow=return_arrow,
+        return Query(self, attrs=attrs, attr_cond=attr_cond, dims=dims, 
+                     coords=coords, order=order, use_arrow=use_arrow, 
+                     return_arrow=return_arrow, 
                      return_incomplete=return_incomplete)
 
 
@@ -5318,7 +5326,7 @@ cdef class SparseArrayImpl(Array):
         """
         return self.subarray(selection)
 
-    def query(self, attrs=None, dims=None, index_col=True,
+    def query(self, attrs=None, attr_cond=None, dims=None, index_col=True,
               coords=None, order='U', use_arrow=None, return_arrow=None, return_incomplete=False):
         """
         Construct a proxy Query object for easy subarray queries of cells
@@ -5330,6 +5338,7 @@ cdef class SparseArrayImpl(Array):
         :param attrs: the SparseArray attributes to subselect over.
             If attrs is None (default) all array attributes will be returned.
             Array attributes can be defined by name or by positional index.
+        :param attr_cond: the QueryCondition to filter attributes on.
         :param dims: the SparseArray dimensions to subselect over. If dims is None (default)
             then all dimensions are returned, unless coords=False.
         :param index_col: For dataframe queries, override the saved index information,
@@ -5374,8 +5383,9 @@ cdef class SparseArrayImpl(Array):
         elif dims is None and coords is None:
             _coords = True
 
-        return Query(self, attrs=attrs, dims=dims, coords=_coords, index_col=index_col,
-                     order=order, use_arrow=use_arrow, return_arrow=return_arrow,
+        return Query(self, attrs=attrs, attr_cond=attr_cond, dims=dims, 
+                     coords=_coords, index_col=index_col, order=order, 
+                     use_arrow=use_arrow, return_arrow=return_arrow,
                      return_incomplete=return_incomplete)
 
     def subarray(self, selection, coords=True, attrs=None, order=None):

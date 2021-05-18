@@ -64,6 +64,8 @@ public:
     }
   }
 
+  shared_ptr<QueryCondition> ptr() { return qc_; }
+
   template <typename T>
   PyQueryCondition(const string &attribute_name, T condition_value,
                    tiledb_query_condition_op_t op, py::object ctx) {

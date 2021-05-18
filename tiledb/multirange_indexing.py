@@ -303,6 +303,7 @@ def _get_pyquery(array: Array, query: Optional[Query], use_arrow: bool) -> PyQue
         array._ctx_(),
         array,
         tuple(_iter_attr_names(schema, query)),
+        query.attr_cond,
         tuple(_iter_dim_names(schema, query)),
         layout,
         use_arrow,
