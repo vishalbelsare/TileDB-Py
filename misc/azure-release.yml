@@ -32,9 +32,9 @@ stages:
     strategy:
       matrix:
         manylinux2010:
-          container: quay.io/pypa/manylinux2010_x86_64:2021-07-18-347adca
+          containerImage: quay.io/pypa/manylinux2010_x86_64:2021-07-18-347adca
         manylinux2014_aarch64:
-          container: quay.io/pypa/manylinux2014_aarch64:2021-07-18-347adca
+          containerImage: quay.io/pypa/manylinux2014_aarch64:2021-07-18-347adca
     container: $[ variables['containerImage'] ]
     variables:
       CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
