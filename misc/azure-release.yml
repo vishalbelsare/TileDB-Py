@@ -29,7 +29,13 @@ stages:
     - template: azure-libtiledb-darwin.yml
 
   - job: build1_libtiledb_on_linux
-    container: quay.io/pypa/manylinux2010_x86_64:2021-06-07-00faba2
+    strategy:
+      matrix:
+        manylinux2010:
+          container: quay.io/pypa/manylinux2010_x86_64:2021-07-18-347adca
+        manylinux2014_aarch64:
+          container: quay.io/pypa/manylinux2014_aarch64:2021-07-18-347adca
+    container: $[ variables['containerImage'] ]
     variables:
       CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
       CFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL=0 -D__BIONIC__=1"
