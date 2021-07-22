@@ -38,7 +38,8 @@ stages:
   #   - template: azure-libtiledb-darwin.yml
   
   - job: build1_libtiledb_on_manylinux2014_aarch64
-    runs-on: ubuntu-latest
+    pool:
+      vmImage: 'ubuntu-latest'
     container: 
       image: quay.io/pypa/manylinux2014_aarch64:latest
       options: --platform linux/arm64 
