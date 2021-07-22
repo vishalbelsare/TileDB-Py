@@ -38,9 +38,10 @@ stages:
   #   - template: azure-libtiledb-darwin.yml
   
   - job: build1_libtiledb_on_manylinux2014_aarch64
+    runs-on: ubuntu-latest
     container: 
-      image: quay.io/pypa/manylinux2014_x86_64:latest
-      options: --platform linux/amd64 
+      image: quay.io/pypa/manylinux2014_aarch64:latest
+      options: --platform linux/arm64 
     variables:
       CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
       CFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL=0 -D__BIONIC__=1"
