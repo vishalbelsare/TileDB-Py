@@ -39,7 +39,7 @@ stages:
   
   - job: build1_libtiledb_on_manylinux2014_aarch64
     container: 
-      image: quay.io/pypa/manylinux_2_24_aarch64:latest
+      image: quay.io/pypa/manylinux2010_x86_64:latest
       options: --platform linux/arm64 
     variables:
       CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
