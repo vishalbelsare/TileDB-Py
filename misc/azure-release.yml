@@ -39,7 +39,7 @@ stages:
   
   - job: build1_libtiledb_on_manylinux2014_aarch64
     pool:
-      vmImage: 'ubuntu-latest'
+      vmImage: 'macOS-latest'
     container: 
       image: quay.io/pypa/manylinux2014_aarch64:latest
       options: --platform linux/arm64 
