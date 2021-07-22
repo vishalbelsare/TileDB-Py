@@ -14,33 +14,33 @@ stages:
   condition: or(startsWith(variables['Build.SourceBranch'], 'refs/tags'), startsWith(variables['Build.SourceBranchName'], 'release-'))
 
   jobs:
-  - job: build1_libtiledb
-    strategy:
-      matrix:
-          macOS_libtiledb:
-            imageName: 'macOS-10.15'
-          windows_libtiledb:
-            imageName: 'windows-latest'
-    pool:
-      vmImage: $(imageName)
+  # - job: build1_libtiledb
+  #   strategy:
+  #     matrix:
+  #         macOS_libtiledb:
+  #           imageName: 'macOS-10.15'
+  #         windows_libtiledb:
+  #           imageName: 'windows-latest'
+  #   pool:
+  #     vmImage: $(imageName)
 
-    steps:
-    - task: UsePythonVersion@0
-    - template: azure-libtiledb-darwin.yml
+  #   steps:
+  #   - task: UsePythonVersion@0
+  #   - template: azure-libtiledb-darwin.yml
 
-  - job: build1_libtiledb_on_manylinux2010_x86_64
-    container: quay.io/pypa/manylinux2010_x86_64:latest
-    variables:
-      CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
-      CFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL=0 -D__BIONIC__=1"
-    steps:
-    - task: UsePythonVersion@0
-    - template: azure-libtiledb-darwin.yml
+  # - job: build1_libtiledb_on_manylinux2010_x86_64
+  #   container: quay.io/pypa/manylinux2010_x86_64:latest
+  #   variables:
+  #     CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
+  #     CFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL=0 -D__BIONIC__=1"
+  #   steps:
+  #   - task: UsePythonVersion@0
+  #   - template: azure-libtiledb-darwin.yml
   
   - job: build1_libtiledb_on_manylinux2014_aarch64
     container: 
       image: quay.io/pypa/manylinux2014_aarch64:latest
-      options: --platform linux/arm64
+      options: --platform linux/arm64 -d
     variables:
       CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
       CFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL=0 -D__BIONIC__=1"
