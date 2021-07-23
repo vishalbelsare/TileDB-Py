@@ -38,17 +38,26 @@ stages:
   #   - template: azure-libtiledb-darwin.yml
   
   - job: build1_libtiledb_on_manylinux2014_aarch64
-    pool:
-      vmImage: 'ubuntu-20.04'
-    container: 
-      image: quay.io/pypa/manylinux2014_aarch64:latest
-      options: --platform linux/arm64 
-    variables:
-      CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
-      CFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL=0 -D__BIONIC__=1"
+    # pool:
+    #   vmImage: 'ubuntu-20.04'
+    # container: 
+    #   image: quay.io/pypa/manylinux2014_aarch64:latest
+    #   options: --platform linux/arm64 
+    # variables:
+    #   CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
+    #   CFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL=0 -D__BIONIC__=1"
     steps:
     - task: UsePythonVersion@0
     - template: azure-libtiledb-darwin.yml
+
+    - bash: |
+        docker pull multiarch/qemu-user-static
+        docker pull quay.io/pypa/manylinux2014_aarch64:latest
+      displayName: Pull image
+    - bash: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+      displayName: Install QEMU
+    - bash: docker run --rm quay.io/pypa/manylinux2014_aarch64 uname -a
+      displayName: Run image
 
   # - job: build2_python
   #   dependsOn: [build1_libtiledb, build1_libtiledb_on_linux]
