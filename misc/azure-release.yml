@@ -67,7 +67,10 @@ stages:
         --env MACOSX_DEPLOYMENT_TARGET=$(MACOSX_DEPLOYMENT_TARGET) \
         --env USE_CIBW_VERSION=$(USE_CIBW_VERSION) \
         --platform linux/arm64 \
-        --rm quay.io/pypa/manylinux2014_aarch64 uname -a 
+        --rm quay.io/pypa/manylinux2014_aarch64
+
+        uname -a
+        pwd
 
         git clone ${LIBTILEDB_REPO} $TILEDB_SRC
         git -C $(TILEDB_SRC) checkout $(LIBTILEDB_SHA)
