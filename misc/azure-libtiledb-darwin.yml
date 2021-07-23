@@ -19,7 +19,7 @@ steps:
       brew uninstall --ignore-dependencies libidn2 brotli rtmpdump
     fi
 
-    unname -a
+    uname -a
 
     git clone ${LIBTILEDB_REPO} $TILEDB_SRC
     git -C $(TILEDB_SRC) checkout $(LIBTILEDB_SHA)
