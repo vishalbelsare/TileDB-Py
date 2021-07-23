@@ -64,7 +64,7 @@ stages:
         --env TILEDB_BUILD='$(Build.Repository.Localpath)/tiledb_build' \
         --env TILEDB_INSTALL='$(Pipeline.Workspace)/.libtiledb_dist/$(LIBTILEDB_SHA)' \
         --env MACOSX_DEPLOYMENT_TARGET=10.13 \
-        --env USE_CIBW_VERSION=1.6.4 
+        --env USE_CIBW_VERSION=1.6.4 \
         --platform linux/arm64 \
         --rm quay.io/pypa/manylinux2014_aarch64 uname -a 
       displayName: Run manylinux2014_aarch64 image
