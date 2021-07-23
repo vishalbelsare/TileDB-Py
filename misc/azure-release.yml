@@ -46,6 +46,7 @@ stages:
     # variables:
     #   CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
     #   CFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL=0 -D__BIONIC__=1"
+
     steps:
     - bash: |
         docker pull multiarch/qemu-user-static
@@ -55,21 +56,37 @@ stages:
       displayName: Install QEMU
     - bash: |
         docker run \
-        --env TILEDBPY_VERSION=0.9.3 \
-        --env LIBTILEDB_VERSION=2.3.2 \
-        --env LIBTILEDB_SHA=4b563fed604496e2caffe4085dbd9bb004626fff \
-        --env LIBTILEDB_REPO=https://github.com/TileDB-Inc/TileDB \
-        --env SDKROOT='/Applications/Xcode_10.3.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.14.sdk' \
-        --env TILEDB_SRC='$(Build.Repository.Localpath)/tiledb_src' \
-        --env TILEDB_BUILD='$(Build.Repository.Localpath)/tiledb_build' \
-        --env TILEDB_INSTALL='$(Pipeline.Workspace)/.libtiledb_dist/$(LIBTILEDB_SHA)' \
-        --env MACOSX_DEPLOYMENT_TARGET=10.13 \
-        --env USE_CIBW_VERSION=1.6.4 \
+        --env TILEDBPY_VERSION=$(TILEDBPY_VERSION) \
+        --env LIBTILEDB_VERSION=$(LIBTILEDB_VERSION) \
+        --env LIBTILEDB_SHA=$(LIBTILEDB_SHA) \
+        --env LIBTILEDB_REPO=$(LIBTILEDB_REPO) \
+        --env SDKROOT=$(SDKROOT) \
+        --env TILEDB_SRC=$(TILEDB_SRC) \
+        --env TILEDB_BUILD=$(TILEDB_BUILD) \
+        --env TILEDB_INSTALL=$(TILEDB_INSTALL) \
+        --env MACOSX_DEPLOYMENT_TARGET=$(MACOSX_DEPLOYMENT_TARGET) \
+        --env USE_CIBW_VERSION=$(USE_CIBW_VERSION) \
         --platform linux/arm64 \
         --rm quay.io/pypa/manylinux2014_aarch64 uname -a 
-      displayName: Run manylinux2014_aarch64 image
-    - task: UsePythonVersion@0
-    - template: azure-libtiledb-darwin.yml
+
+        git clone ${LIBTILEDB_REPO} $TILEDB_SRC
+        git -C $(TILEDB_SRC) checkout $(LIBTILEDB_SHA)
+
+        mkdir -p $TILEDB_BUILD
+        cd $TILEDB_BUILD
+
+        $TILEDB_SRC/bootstrap --force-build-all-deps --disable-werror --enable=s3,gcs,azure,serialization --enable-static-tiledb --disable-avx2 --disable-tests --prefix=$TILEDB_INSTALL
+
+        cmake --build $TILEDB_BUILD --config Release -j3
+        cmake --build $TILEDB_BUILD --target install-tiledb --config Release
+
+        echo ${TILEDB_INSTALL}
+        ls
+        ls -R ${TILEDB_INSTALL}
+        tar -czf ${TILEDB_INSTALL}/libtiledb-${LIBTILEDB_VERSION}-${LIBTILEDB_SHA} -C ${TILEDB_INSTALL} lib64 include
+      displayName: Run manylinux2014_aarch64 image and compile libtiledb
+    # - task: UsePythonVersion@0
+    # - template: azure-libtiledb-darwin.yml
 
   # - job: build2_python
   #   dependsOn: [build1_libtiledb, build1_libtiledb_on_linux]
