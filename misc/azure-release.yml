@@ -47,8 +47,8 @@ stages:
     #   CXXFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL10 -D__BIONIC__=1"
     #   CFLAGS: "-Wno-unused-parameter -lrt -DKJ_USE_EPOLL=0 -D__BIONIC__=1"
     steps:
-    - task: UsePythonVersion@0
-    - template: azure-libtiledb-darwin.yml
+    # - task: UsePythonVersion@0
+    # - template: azure-libtiledb-darwin.yml
 
     - bash: |
         docker pull multiarch/qemu-user-static
