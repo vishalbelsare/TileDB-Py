@@ -19,6 +19,8 @@ steps:
       brew uninstall --ignore-dependencies libidn2 brotli rtmpdump
     fi
 
+    unname -a
+
     git clone ${LIBTILEDB_REPO} $TILEDB_SRC
     git -C $(TILEDB_SRC) checkout $(LIBTILEDB_SHA)
 
@@ -64,6 +66,9 @@ steps:
     elif [[ "$AGENT_OS" == "Darwin" ]]; then
       tar -czf ${TILEDB_INSTALL}/libtiledb-${LIBTILEDB_VERSION}-${LIBTILEDB_SHA} -C ${TILEDB_INSTALL} .
     else
+      echo ${TILEDB_INSTALL}
+      ls
+      ls -R ${TILEDB_INSTALL}
       tar -czf ${TILEDB_INSTALL}/libtiledb-${LIBTILEDB_VERSION}-${LIBTILEDB_SHA} -C ${TILEDB_INSTALL} lib64 include
     fi
   displayName: "Archive build"

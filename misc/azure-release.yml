@@ -53,7 +53,19 @@ stages:
       displayName: Pull images
     - bash: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
       displayName: Install QEMU
-    - bash: docker run --platform linux/arm64 --rm quay.io/pypa/manylinux2014_aarch64 uname -a 
+    - bash: |
+        docker run --platform linux/arm64 \
+        --rm quay.io/pypa/manylinux2014_aarch64 uname -a  \
+        -e TILEDBPY_VERSION=0.9.3 \
+        -e LIBTILEDB_VERSION=2.3.2 \
+        -e LIBTILEDB_SHA=4b563fed604496e2caffe4085dbd9bb004626fff \
+        -e LIBTILEDB_REPO=https://github.com/TileDB-Inc/TileDB \
+        -e SDKROOT='/Applications/Xcode_10.3.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.14.sdk' \
+        -e TILEDB_SRC='$(Build.Repository.Localpath)/tiledb_src' \
+        -e TILEDB_BUILD='$(Build.Repository.Localpath)/tiledb_build' \
+        -e TILEDB_INSTALL='$(Pipeline.Workspace)/.libtiledb_dist/$(LIBTILEDB_SHA)' \
+        -e MACOSX_DEPLOYMENT_TARGET=10.13 \
+        -e USE_CIBW_VERSION=1.6.4 
       displayName: Run manylinux2014_aarch64 image
     - task: UsePythonVersion@0
     - template: azure-libtiledb-darwin.yml
