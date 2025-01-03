@@ -30,17 +30,39 @@
 # with tiledb.from_csv and Python multiprocessing.
 #
 
-import tiledb
-import numpy as np, pandas as pd
-import os, tempfile, time, glob
+import glob
 import multiprocessing
+import os
+import tempfile
+import time
 from concurrent.futures import ProcessPoolExecutor
+
+import numpy as np
+
+import tiledb
 
 # helper functions to generate data
 from tiledb.tests.common import rand_datetime64_array, rand_utf8
 
 # are we running as a test
 in_test = "PYTEST_CURRENT_TEST" in os.environ
+
+
+def check_dataframe_deps():
+    pd_error = """Pandas version >= 1.0 and < 3.0 required for dataframe functionality.
+                  Please `pip install pandas>=1.0,<3.0` to proceed."""
+
+    try:
+        import pandas as pd
+    except ImportError:
+        raise Exception(pd_error)
+
+    from packaging.version import Version
+
+    if Version(pd.__version__) < Version("1.0") or Version(pd.__version__) >= Version(
+        "3.0.0.dev0"
+    ):
+        raise Exception(pd_error)
 
 
 def generate_csvs(csv_folder, count=9, min_length=1, max_length=109):
@@ -124,8 +146,8 @@ def from_csv_mp(
     Currently uses ProcessPoolExecutor.
     """
 
-    # Setting start method to 'spawn' is required before TileDB 2.1 to
-    # avoid problems with TBB when spawning via fork.
+    # Setting start method to 'spawn' is required to
+    # avoid problems with process global state when spawning via fork.
     # NOTE: *must be inside __main__* or a function.
     if multiprocessing.get_start_method(True) != "spawn":
         multiprocessing.set_start_method("spawn", True)
@@ -166,7 +188,6 @@ def from_csv_mp(
         )
 
     tasks = []
-    csv_chunks = []
     # high level ingestion timing
     start = time.time()
 
@@ -317,4 +338,7 @@ def test_parallel_csv_ingestion():
 
 
 if __name__ == "__main__":
+    check_dataframe_deps()
+    import pandas as pd
+
     test_parallel_csv_ingestion()

@@ -1,16 +1,14 @@
-from contextlib import AbstractContextManager
-import itertools
-
 import numpy as np
-from numpy.testing import assert_array_equal
 import pytest
 
 import tiledb
-from tiledb.main import tiledb_serialization_type_t as ser_type
-from tiledb.main import serialization as ser
 
-from tiledb.tests.common import DiskTestCase
-from tiledb.main import test_serialization as ser_test
+from .common import DiskTestCase
+
+try:
+    from tiledb.main import test_serialization as ser_test
+except ImportError:
+    pytest.skip("Serialization not enabled.", allow_module_level=True)
 
 
 class SerializationTest(DiskTestCase):
@@ -29,4 +27,4 @@ class SerializationTest(DiskTestCase):
         with tiledb.open(path, "r") as A:
             ctx = tiledb.default_ctx()
             ser_qry = ser_test.create_serialized_test_query(ctx, A)
-            assert_array_equal(A.query()[3:8][""], A.set_query(ser_qry)[""])
+            np.testing.assert_array_equal(A.query()[3:8][""], A.set_query(ser_qry)[""])

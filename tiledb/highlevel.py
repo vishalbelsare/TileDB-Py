@@ -1,9 +1,13 @@
-import tiledb
+import json
+import warnings
+from typing import Callable, Optional
 
 import numpy as np
-import os
 
-from tiledb import fragment
+import tiledb
+import tiledb.libtiledb as lt
+
+from .dataframe_ import create_dim
 
 
 def open(uri, mode="r", key=None, attr=None, config=None, timestamp=None, ctx=None):
@@ -15,7 +19,7 @@ def open(uri, mode="r", key=None, attr=None, config=None, timestamp=None, ctx=No
         See the TileDB `time traveling <https://docs.tiledb.com/main/how-to/arrays/reading-arrays/time-traveling>`_
         documentation for detailed functionality description.
     :param key: encryption key, str or None
-    :param str mode: (default 'r') Open the array object in read 'r' or write 'w' mode
+    :param str mode: (default 'r') Open the array object in read 'r', write 'w',  modify exclusive 'm' mode, or  delete 'd' mode
     :param attr: attribute name to select from a multi-attribute array, str or None
     :param config: TileDB config dictionary, dict or None
     :return: open TileDB {Sparse,Dense}Array object
@@ -43,7 +47,7 @@ def save(uri, array, **kwargs):
     return from_numpy(uri, array, **kwargs)
 
 
-def empty_like(uri, arr, config=None, key=None, tile=None, ctx=None):
+def empty_like(uri, arr, config=None, key=None, tile=None, ctx=None, dtype=None):
     """
     Create and return an empty, writeable DenseArray with schema based on
     a NumPy-array like object.
@@ -54,10 +58,16 @@ def empty_like(uri, arr, config=None, key=None, tile=None, ctx=None):
     :param key: (optional) encryption key, if applicable
     :param tile: (optional) tiling of generated array
     :param ctx: (optional) TileDB Ctx
+    :param dtype: (optional) required if arr is a shape tuple
     :return:
     """
     ctx = _get_ctx(ctx, config)
-    schema = tiledb.schema_like(arr, tile=tile, ctx=ctx)
+    if isinstance(arr, tuple):
+        if dtype is None:
+            raise ValueError("dtype must be valid data type (e.g. np.int32), not None")
+        schema = schema_like(shape=arr, tile=tile, ctx=ctx, dtype=dtype)
+    else:
+        schema = schema_like(arr, tile=tile, ctx=ctx)
     tiledb.DenseArray.create(uri, schema, key=key, ctx=ctx)
     return tiledb.DenseArray(uri, mode="w", key=key, ctx=ctx)
 
@@ -77,35 +87,100 @@ def from_numpy(uri, array, config=None, ctx=None, **kwargs):
     :raises TypeError: cannot convert ``uri`` to unicode string
     :raises: :py:exc:`tiledb.TileDBError`
 
+    :Keyword Arguments:
+
+        * **full_domain** - Dimensions should be created with full range of the dtype (default: False)
+        * **mode** - Creation mode, one of 'ingest' (default), 'schema_only', 'append'
+        * **append_dim** - The dimension along which the Numpy array is append (default: 0).
+        * **start_idx** - The starting index to append to. By default, append to the end of the existing data.
+        * **timestamp** - Write TileDB array at specific timestamp.
+        * **dim_dtype** - Dimension data type, default np.uint64
+        * **attr_name** - Attribute name, default empty string
+        * **tile** - Tile extent for each dimension, default None
+
+        Additionally, arguments accepted by ArraySchema constructor can also be passed to customize the underlying array schema.
+
     **Example:**
 
     >>> import tiledb, numpy as np, tempfile
     >>> with tempfile.TemporaryDirectory() as tmp:
     ...     # Creates array 'array' on disk.
-    ...     with tiledb.DenseArray.from_numpy(tmp + "/array",  np.array([1.0, 2.0, 3.0])) as A:
+    ...     with tiledb.from_numpy(tmp + "/array",  np.array([1.0, 2.0, 3.0])) as A:
     ...         pass
     """
     if not isinstance(array, np.ndarray):
         raise Exception("from_numpy is only currently supported for numpy.ndarray")
 
-    return tiledb.DenseArray.from_numpy(uri, array, ctx=_get_ctx(ctx, config), **kwargs)
+    ctx = _get_ctx(ctx, config)
+    mode = kwargs.pop("mode", "ingest")
+    timestamp = kwargs.pop("timestamp", None)
+    sparse = kwargs.pop("sparse", False)
+
+    if sparse:
+        raise tiledb.TileDBError("from_numpy only supports dense arrays")
+
+    if mode not in ("ingest", "schema_only", "append"):
+        raise tiledb.TileDBError(f"Invalid mode specified ('{mode}')")
+
+    if mode in ("ingest", "schema_only"):
+        try:
+            with tiledb.Array.load_typed(uri):
+                raise tiledb.TileDBError(f"Array URI '{uri}' already exists!")
+        except tiledb.TileDBError:
+            pass
+
+    if mode == "append":
+        kwargs["append_dim"] = kwargs.get("append_dim", 0)
+        if tiledb.ArraySchema.load(uri).sparse:
+            raise tiledb.TileDBError("Cannot append to sparse array")
+
+    if mode in ("ingest", "schema_only"):
+        schema = _schema_like_numpy(array, ctx, **kwargs)
+        tiledb.Array.create(uri, schema, ctx=ctx)
+
+    if mode in ("ingest", "append"):
+        kwargs["mode"] = mode
+        with tiledb.open(uri, mode="w", ctx=ctx, timestamp=timestamp) as arr:
+            # <TODO> probably need better typecheck here
+            if array.dtype == object:
+                arr[:] = array
+            else:
+                arr.write_direct(np.ascontiguousarray(array), **kwargs)
+
+    return tiledb.DenseArray(uri, mode="r", ctx=ctx)
 
 
-def array_exists(uri, isdense=False, issparse=False):
+def array_exists(uri, isdense=False, issparse=False, ctx=None):
     """
     Check if arrays exists and is open-able at the given URI
 
-    Optionally restrict to `isdense` or `issparse` array types.
+    :param str uri: URI for the TileDB array (any supported TileDB URI)
+    :param bool isdense: (optional) Restrict to dense array types
+    :param bool issparse: (optional) Restrict to sparse array types
+    :param ctx: (optional) TileDB Ctx
     """
+    ctx = _get_ctx(ctx)
+    # note: we can't use *only* object_type here, because it returns 'array' even if
+    # no files exist in the __schema directory (eg after delete). See SC-27854
+    # but we need to use it first here, or else tiledb.open below will error out if
+    # the array does not exist.
+    if tiledb.object_type(uri, ctx) != "array":
+        return False
     try:
-        with tiledb.open(uri) as a:
+        with tiledb.open(uri, ctx=ctx) as a:
             if isdense:
                 return not a.schema.sparse
             if issparse:
                 return a.schema.sparse
             return True
-    except tiledb.TileDBError:
-        return False
+    except tiledb.TileDBError as exc:
+        if (
+            exc.args[0]
+            == "[TileDB::Array] Error: Cannot open array; Array does not exist."
+        ):
+            return False
+        else:
+            raise
 
 
 def array_fragments(uri, include_mbrs=False, ctx=None):
@@ -133,157 +208,347 @@ def array_fragments(uri, include_mbrs=False, ctx=None):
     return tiledb.FragmentInfoList(uri, include_mbrs, ctx)
 
 
-def delete_fragments(
-    uri, timestamp_range, config=None, ctx=None, verbose=False, dry_run=False
+def consolidate(uri, config=None, ctx=None, fragment_uris=None, timestamp=None):
+    """Consolidates TileDB array fragments for improved read performance
+
+    :param str uri: URI to the TileDB Array
+    :param str key: (default None) Key to decrypt array if the array is encrypted
+    :param tiledb.Config config: The TileDB Config with consolidation parameters set
+    :param tiledb.Ctx ctx: (default None) The TileDB Context
+    :param fragment_uris: (default None) Consolidate the array using a list of fragment file names
+    :param timestamp: (default None) If not None, consolidate the array using the given tuple(int, int) UNIX seconds range (inclusive). This argument will be ignored if `fragment_uris` is passed.
+    :rtype: str or bytes
+    :return: path (URI) to the consolidated TileDB Array
+    :raises TypeError: cannot convert path to unicode string
+    :raises: :py:exc:`tiledb.TileDBError`
+
+    Rather than passing the timestamp into this function, it may be set with
+    the config parameters `"sm.vacuum.timestamp_start"`and
+    `"sm.vacuum.timestamp_end"` which takes in a time in UNIX seconds. If both
+    are set then this function's `timestamp` argument will be used.
+
+    **Example:**
+
+    >>> import tiledb, tempfile, numpy as np, os
+    >>> path = tempfile.mkdtemp()
+
+    >>> with tiledb.from_numpy(path, np.zeros(4), timestamp=1) as A:
+    ...     pass
+    >>> with tiledb.open(path, 'w', timestamp=2) as A:
+    ...     A[:] = np.ones(4, dtype=np.int64)
+    >>> with tiledb.open(path, 'w', timestamp=3) as A:
+    ...     A[:] = np.ones(4, dtype=np.int64)
+    >>> with tiledb.open(path, 'w', timestamp=4) as A:
+    ...     A[:] = np.ones(4, dtype=np.int64)
+    >>> len(tiledb.array_fragments(path))
+    4
+
+    >>> fragment_names = [
+    ...     os.path.basename(f) for f in tiledb.array_fragments(path).uri
+    ... ]
+    >>> array_uri = tiledb.consolidate(
+    ...    path, fragment_uris=[fragment_names[1], fragment_names[3]]
+    ... )
+    >>> len(tiledb.array_fragments(path))
+    3
+
+    """
+    ctx = _get_ctx(ctx)
+    if config is None:
+        config = lt.Config()
+
+    if fragment_uris is not None:
+        if timestamp is not None:
+            warnings.warn(
+                "The `timestamp` argument will be ignored and only fragments "
+                "passed to `fragment_uris` will be consolidated",
+                DeprecationWarning,
+            )
+        return lt.Array._consolidate(uri, ctx, fragment_uris, config)
+    elif timestamp is not None:
+        return lt.Array._consolidate(uri, ctx, timestamp, config)
+    else:
+        return lt.Array._consolidate(uri, ctx, config)
+
+
+def vacuum(uri, config=None, ctx=None, timestamp=None):
+    """
+    Vacuum underlying array fragments after consolidation.
+
+    :param str uri: URI of array to be vacuumed
+    :param config: Override the context configuration for vacuuming.
+        Defaults to None, inheriting the context parameters.
+    :param (ctx: tiledb.Ctx, optional): Context. Defaults to
+        `tiledb.default_ctx()`.
+    :raises TypeError: cannot convert `uri` to unicode string
+    :raises: :py:exc:`tiledb.TileDBError`
+
+    This operation of this function is controlled by
+    the `"sm.vacuum.mode"` parameter, which accepts the values ``fragments``,
+    ``fragment_meta``, and ``array_meta``. Rather than passing the timestamp
+    into this function, it may be set by using `"sm.vacuum.timestamp_start"`and
+    `"sm.vacuum.timestamp_end"` which takes in a time in UNIX seconds. If both
+    are set then this function's `timestamp` argument will be used.
+
+    **Example:**
+
+    >>> import tiledb, numpy as np
+    >>> import tempfile
+    >>> path = tempfile.mkdtemp()
+    >>> with tiledb.from_numpy(path, np.random.rand(4)) as A:
+    ...     pass # make sure to close
+    >>> with tiledb.open(path, 'w') as A:
+    ...     for i in range(4):
+    ...         A[:] = np.ones(4, dtype=np.int64) * i
+    >>> paths = tiledb.VFS().ls(path)
+    >>> # should be 12 (2 base files + 2*5 fragment+ok files)
+    >>> (); len(paths); () # doctest:+ELLIPSIS
+    (...)
+    >>> () ; tiledb.consolidate(path) ; () # doctest:+ELLIPSIS
+    (...)
+    >>> tiledb.vacuum(path)
+    >>> paths = tiledb.VFS().ls(path)
+    >>> # should now be 4 ( base files + 2 fragment+ok files)
+    >>> (); len(paths); () # doctest:+ELLIPSIS
+    (...)
+
+    """
+    ctx = _get_ctx(ctx)
+    if config is None:
+        config = tiledb.Config()
+
+    if timestamp is not None:
+        warnings.warn(
+            "Partial vacuuming via timestamp will be deprecrated in "
+            "a future release and replaced by passing in fragment URIs.",
+            DeprecationWarning,
+        )
+
+        if not isinstance(timestamp, tuple) and len(timestamp) != 2:
+            raise TypeError("'timestamp' argument expects tuple(start: int, end: int)")
+
+        if timestamp[0] is not None:
+            config["sm.vacuum.timestamp_start"] = timestamp[0]
+        if timestamp[1] is not None:
+            config["sm.vacuum.timestamp_end"] = timestamp[1]
+
+    lt.Array._vacuum(ctx, uri, config)
+
+
+def schema_like(*args, shape=None, dtype=None, ctx=None, **kwargs):
+    """
+    Return an ArraySchema corresponding to a NumPy-like object or
+    `shape` and `dtype` kwargs. Users are encouraged to pass 'tile'
+    and 'capacity' keyword arguments as appropriate for a given
+    application.
+
+    :param A: NumPy array-like object, or TileDB reference URI, optional
+    :param tuple shape: array shape, optional
+    :param dtype: array dtype, optional
+    :param Ctx ctx: TileDB Ctx
+    :param kwargs: additional keyword arguments to pass through, optional
+    :return: tiledb.ArraySchema
+    """
+    ctx = _get_ctx(ctx)
+
+    def is_ndarray_like(arr):
+        return hasattr(arr, "shape") and hasattr(arr, "dtype") and hasattr(arr, "ndim")
+
+    # support override of default dimension dtype
+    dim_dtype = kwargs.pop("dim_dtype", np.uint64)
+    if len(args) == 1:
+        arr = args[0]
+        if not is_ndarray_like(arr):
+            raise ValueError("expected ndarray-like object")
+        schema = _schema_like_numpy(arr, ctx, dim_dtype, tile=kwargs.pop("tile", None))
+    elif shape and dtype:
+        if np.issubdtype(np.bytes_, dtype):
+            dtype = np.dtype("S")
+        elif np.issubdtype(dtype, np.str_):
+            dtype = np.dtype("U")
+
+        ndim = len(shape)
+        tiling = _regularize_tiling(kwargs.pop("tile", None), ndim)
+
+        dims = []
+        for d in range(ndim):
+            # support smaller tile extents by kwargs
+            # domain is based on full shape
+            tile_extent = tiling[d] if tiling else shape[d]
+            domain = (0, shape[d] - 1)
+            dims.append(
+                tiledb.Dim(domain=domain, tile=tile_extent, dtype=dim_dtype, ctx=ctx)
+            )
+
+        att = tiledb.Attr(dtype=dtype, ctx=ctx)
+        dom = tiledb.Domain(*dims, ctx=ctx)
+        schema = tiledb.ArraySchema(ctx=ctx, domain=dom, attrs=(att,), **kwargs)
+    elif kwargs is not None:
+        raise ValueError
+    else:
+        raise ValueError(
+            "Must provide either ndarray-like object or 'shape' "
+            "and 'dtype' keyword arguments"
+        )
+
+    return schema
+
+
+def as_built(return_json_string=False):
+    """
+    Dumps the TileDB build configuration to a dictionary or string.
+
+    :param bool return_json_string: Return the output as a string instead of a dictionary
+    :return: dict or str
+    """
+    res = tiledb.main.as_built_dump()
+
+    if return_json_string:
+        return res
+
+    return json.loads(res)
+
+
+def object_type(uri: str, ctx: tiledb.Ctx = None) -> Optional[str]:
+    """Returns the TileDB object type at the specified URI as a string.
+
+    :param uri: URI of the TileDB resource
+    :param ctx: The TileDB Context
+    :return: object type string ("array" or "group") or None if invalid TileDB object```
+    """
+    ctx = _get_ctx(ctx)
+
+    return tiledb.main.object_type(uri, ctx)
+
+
+def ls(uri: str, func: Callable, ctx: tiledb.Ctx = None):
+    """Lists TileDB resources and applies a callback that have a prefix of ``uri`` (one level deep).
+
+    :param uri: URI of TileDB group object
+    :param func: callback to execute on every listed TileDB resource,\
+            resource URI and object type label are passed as arguments to the callback
+    :param ctx: A TileDB Context
+    """
+    ctx = _get_ctx(ctx)
+
+    tiledb.main.ls(uri, func, ctx)
+
+
+def walk(uri: str, func: Callable, order: str = "preorder", ctx: tiledb.Ctx = None):
+    """Recursively visits TileDB resources and applies a callback to resources that have a prefix of ``uri``
+
+    :param uri: URI of TileDB group object
+    :param func: callback to execute on every listed TileDB resource,\
+            resource URI and object type label are passed as arguments to the callback
+    :param ctx: The TileDB context
+    :param order: 'preorder' (default) or 'postorder' tree traversal
+    :raises ValueError: unknown order
+    :raises: :py:exc:`tiledb.TileDBError`
+    """
+    ctx = _get_ctx(ctx)
+
+    tiledb.main.walk(uri, func, order, ctx)
+
+
+def remove(uri: str, ctx: tiledb.Ctx = None):
+    """Removes (deletes) the TileDB object at the specified URI
+
+    :param uri: URI of the TileDB resource
+    :param ctx: The TileDB Context
+    :raises: :py:exc:`tiledb.TileDBError`
+    """
+    ctx = _get_ctx(ctx)
+
+    tiledb.main.remove(ctx, uri)
+
+
+def move(old_uri: str, new_uri: str, ctx: tiledb.Ctx = None):
+    """Moves a TileDB resource (group, array, key-value).
+
+    :param old_uri: URI of the TileDB resource to move
+    :param new_uri: URI of the destination
+    :param ctx: The TileDB Context
+    :raises: :py:exc:`TileDBError`
+    """
+    ctx = _get_ctx(ctx)
+
+    tiledb.main.move(ctx, old_uri, new_uri)
+
+
+def _schema_like_numpy(
+    array,
+    ctx,
+    dim_dtype=np.uint64,
+    attr_name="",
+    full_domain=False,
+    tile=None,
+    **kwargs,
 ):
     """
-    Delete fragments from an array located at uri that falls within a given
-    timestamp_range.
-
-    :param str uri: URI for the TileDB array (any supported TileDB URI)
-    :param (int, int) timestamp_range: (default None) If not None, vacuum the
-        array using the given range (inclusive)
-    :param config: Override the context configuration. Defaults to ctx.config()
-    :param ctx: (optional) TileDB Ctx
-    :param verbose: (optional) Print fragments being deleted (default: False)
-    :param dry_run: (optional) Preview fragments to be deleted without
-        running (default: False)
+    Internal helper function for schema_like to create array schema from
+    NumPy array-like object.
     """
-
-    if not isinstance(timestamp_range, tuple) and len(timestamp_range) != 2:
-        raise TypeError(
-            "'timestamp_range' argument expects tuple(start: int, end: int)"
+    # create an ArraySchema from the numpy array object
+    tiling = _regularize_tiling(tile, array.ndim)
+    dims = [
+        create_dim(
+            dtype=dim_dtype,
+            values=(0, array.shape[d] - 1),
+            full_domain=full_domain,
+            tile=tiling[d] if tiling else array.shape[d],
+            ctx=ctx,
         )
+        for d in range(array.ndim)
+    ]
+    var = False
+    if array.dtype == object:
+        # for object arrays, we use the dtype of the first element
+        # consistency check should be done later, if needed
+        el0 = array.flat[0]
+        if isinstance(el0, bytes):
+            el_dtype = np.dtype("S")
+            var = True
+        elif isinstance(el0, str):
+            el_dtype = np.dtype("U")
+            var = True
+        elif isinstance(el0, np.ndarray):
+            if len(el0.shape) != 1:
+                raise TypeError(
+                    "Unsupported sub-array type for Attribute: {} "
+                    "(only string arrays and 1D homogeneous NumPy arrays are supported)".format(
+                        type(el0)
+                    )
+                )
+            el_dtype = el0.dtype
+        else:
+            raise TypeError(
+                "Unsupported sub-array type for Attribute: {} "
+                "(only strings and homogeneous-typed NumPy arrays are supported)".format(
+                    type(el0)
+                )
+            )
+    else:
+        el_dtype = array.dtype
 
-    if not ctx:
-        ctx = tiledb.default_ctx()
-
-    if config is None:
-        config = tiledb.Config(ctx.config())
-
-    vfs = tiledb.VFS(config=config, ctx=ctx)
-
-    if verbose or dry_run:
-        print("Deleting fragments:")
-
-    for frag in tiledb.array_fragments(uri):
-        if (
-            timestamp_range[0] <= frag.timestamp_range[0]
-            and frag.timestamp_range[1] <= timestamp_range[1]
-        ):
-            if verbose or dry_run:
-                print(f"\t{frag.uri}")
-
-            if not dry_run:
-                vfs.remove_file(f"{frag.uri}.ok")
-                vfs.remove_dir(frag.uri)
+    att = tiledb.Attr(dtype=el_dtype, name=attr_name, var=var, ctx=ctx)
+    dom = tiledb.Domain(*dims, ctx=ctx)
+    return tiledb.ArraySchema(ctx=ctx, domain=dom, attrs=(att,), **kwargs)
 
 
-def create_array_from_fragments(
-    src_uri,
-    dst_uri,
-    timestamp_range,
-    config=None,
-    ctx=None,
-    verbose=False,
-    dry_run=False,
-):
+def _regularize_tiling(tile, ndim):
     """
-    (POSIX only). Create a new array from an already existing array by selecting
-    fragments that fall withing a given timestamp_range. The original array is located
-    at src_uri and the new array is created at dst_uri.
-
-    :param str src_uri: URI for the source TileDB array (any supported TileDB URI)
-    :param str dst_uri: URI for the newly created TileDB array (any supported TileDB URI)
-    :param (int, int) timestamp_range: (default None) If not None, vacuum the
-        array using the given range (inclusive)
-    :param config: Override the context configuration. Defaults to ctx.config()
-    :param ctx: (optional) TileDB Ctx
-    :param verbose: (optional) Print fragments being copied (default: False)
-    :param dry_run: (optional) Preview fragments to be copied without
-        running (default: False)
+    Internal helper function for schema_like and _schema_like_numpy to regularize tiling.
     """
-    if array_exists(dst_uri):
-        raise tiledb.TileDBError(f"Array URI `{dst_uri}` already exists")
+    if not tile:
+        return None
 
-    if not isinstance(timestamp_range, tuple) and len(timestamp_range) != 2:
-        raise TypeError(
-            "'timestamp_range' argument expects tuple(start: int, end: int)"
-        )
+    if np.isscalar(tile):
+        return tuple(int(tile) for _ in range(ndim))
 
-    if not ctx:
-        ctx = tiledb.default_ctx()
+    if isinstance(tile, str) or len(tile) != ndim:
+        raise ValueError("'tile' must be iterable and match array dimensionality")
 
-    if config is None:
-        config = tiledb.Config(ctx.config())
-
-    vfs = tiledb.VFS(config=config, ctx=ctx)
-
-    fragment_info = tiledb.array_fragments(src_uri)
-
-    if len(fragment_info) < 1:
-        print("Cannot create new array; no fragments to copy")
-        return
-
-    if verbose or dry_run:
-        print(f"Creating directory for array at {dst_uri}\n")
-
-    if not dry_run:
-        vfs.create_dir(dst_uri)
-
-    src_lock = os.path.join(src_uri, "__lock.tdb")
-    dst_lock = os.path.join(dst_uri, "__lock.tdb")
-
-    if verbose or dry_run:
-        print(f"Copying lock file {dst_uri}\n")
-
-    if not dry_run:
-        vfs.copy_file(f"{src_lock}", f"{dst_lock}")
-
-    list_new_style_schema = [ver >= 10 for ver in fragment_info.version]
-    is_mixed_versions = len(set(list_new_style_schema)) > 1
-    if is_mixed_versions:
-        raise tiledb.TileDBError(
-            "Cannot copy fragments - this array contains a mix of old and "
-            "new style schemas"
-        )
-    is_new_style_schema = list_new_style_schema[0]
-
-    for frag in fragment_info:
-        if not (
-            timestamp_range[0] <= frag.timestamp_range[0]
-            and frag.timestamp_range[1] <= timestamp_range[1]
-        ):
-            continue
-
-        schema_name = frag.array_schema_name
-        if is_new_style_schema:
-            schema_name = os.path.join("__schema", schema_name)
-        src_schema = os.path.join(src_uri, schema_name)
-        dst_schema = os.path.join(dst_uri, schema_name)
-
-        if verbose or dry_run:
-            print(f"Copying schema `{src_schema}` to `{dst_schema}`\n")
-
-        if not dry_run:
-            if is_new_style_schema:
-                new_style_schema_uri = os.path.join(dst_uri, "__schema")
-                if not vfs.is_dir(new_style_schema_uri):
-                    vfs.create_dir(new_style_schema_uri)
-
-            if not vfs.is_file(dst_schema):
-                vfs.copy_file(src_schema, dst_schema)
-
-        frag_name = os.path.basename(frag.uri)
-        src_frag = frag.uri
-        dst_frag = os.path.join(dst_uri, frag_name)
-
-        if verbose or dry_run:
-            print(f"Copying fragment `{src_frag}` to `{dst_frag}`\n")
-
-        if not dry_run:
-            vfs.copy_file(f"{src_frag}.ok", f"{dst_frag}.ok")
-            vfs.copy_dir(src_frag, dst_frag)
+    return tuple(tile)
 
 
 def _get_ctx(ctx=None, config=None):

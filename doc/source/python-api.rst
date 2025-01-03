@@ -1,10 +1,6 @@
 TileDB Python API Reference
 ===========================
 
-.. warning::
-
-   The Python interface to TileDB is still under development and the API is subject to change.
-
 Modules
 -------
 
@@ -42,11 +38,24 @@ Context
    :members:
 
 .. autofunction:: tiledb.default_ctx
+.. autofunction:: tiledb.scope_ctx
 
 Config
 ------
 
 .. autoclass:: tiledb.Config
+   :members:
+
+Current Domain
+--------------
+
+.. autoclass:: tiledb.CurrentDomain
+   :members:
+
+NDRectangle
+-----------
+
+.. autoclass:: tiledb.NDRectangle
    :members:
 
 Array Schema
@@ -68,7 +77,11 @@ Filters
 
 .. autoclass:: tiledb.FilterList
    :members:
-.. autoclass:: tiledb.libtiledb.CompressionFilter
+
+   .. automethod:: __getitem__(idx)
+   .. automethod:: __len__
+
+.. autoclass:: tiledb.CompressionFilter
    :members:
 .. autoclass:: tiledb.GzipFilter
    :members:
@@ -106,7 +119,7 @@ Domain
 Array
 -----
 
-.. autoclass:: tiledb.libtiledb.Array
+.. autoclass:: tiledb.Array
    :members:
 
 .. autofunction:: tiledb.consolidate
@@ -116,22 +129,58 @@ Dense Array
 -----------
 
 .. autoclass:: tiledb.DenseArray
-   :members:
-   
-   .. automethod:: __getitem__(selection)
-   .. automethod:: __setitem__(selection, value)
-   .. automethod:: query
-   .. automethod:: from_numpy(uri, array, ctx=None, **kwargs)
+   :members: query
+   :special-members: __getitem__, __setitem__
 
 Sparse Array
 ------------
 
 .. autoclass:: tiledb.SparseArray
+   :members: query
+   :special-members: __getitem__, __setitem__
+
+Query
+---------------
+
+.. autoclass:: tiledb.Query
    :members:
-   
-   .. automethod:: __getitem__(selection)
-   .. automethod:: __setitem__(selection, value)
-   .. automethod:: query
+
+Query Condition
+---------------
+
+.. autoclass:: tiledb.QueryCondition
+   :members:
+
+Group
+-----
+
+.. autoclass:: tiledb.Group
+   :members:
+
+   .. automethod:: __getitem__(member)
+   .. automethod:: __delitem__(uri)
+   .. automethod:: __contains__(member)
+   .. automethod:: __len__
+
+.. autoclass:: tiledb.Group.GroupMetadata
+   :members:
+
+   .. automethod:: __setitem__(key, value)
+   .. automethod:: __getitem__(key)
+   .. automethod:: __delitem__(key)
+   .. automethod:: __contains__(key)
+   .. automethod:: __len__
+   .. automethod:: __keys__
+   .. automethod:: __values__
+   .. automethod:: __items__
+
+Object
+------
+
+.. autoclass:: tiledb.Object
+
+   .. autoattribute:: uri
+   .. autoattribute:: type
 
 Object Management
 -----------------
@@ -152,18 +201,36 @@ Fragment Info
 .. autoclass:: tiledb.FragmentInfo
    :members:
 
+Enumeration
+------------
+
+.. autoclass:: tiledb.Enumeration
+   :members:
+
 Exceptions
 ----------
 
 .. autoexception:: tiledb.TileDBError
    :members:
 
-
 VFS
 ---
 
 .. autoclass:: tiledb.VFS
    :members:
+
+.. autoclass:: tiledb.FileIO
+   :members:
+
+   .. automethod:: __len__
+
+Filestore
+---------
+
+.. autoclass:: tiledb.Filestore
+   :members:
+
+   .. automethod:: __len__
 
 Version
 -------

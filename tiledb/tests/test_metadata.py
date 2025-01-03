@@ -2,14 +2,16 @@ import os
 import time
 import warnings
 
-import tiledb
 import numpy as np
 import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from hypothesis.extra import numpy as st_np
 
-from tiledb.tests.common import DiskTestCase, rand_utf8
+import tiledb
+from tiledb.main import metadata_test_aux
 
+from .common import DiskTestCase, assert_captured, rand_utf8
 
 MIN_INT = np.iinfo(np.int64).min
 MAX_INT = np.iinfo(np.int64).max
@@ -76,15 +78,15 @@ class MetadataTest(DiskTestCase):
         # test __len__
         self.assertEqual(len(tdb_meta), len(dict_meta))
 
-        # test __iter__() is consistent with keys()
-        self.assertEqual(list(tdb_meta), tdb_meta.keys())
+        # test __iter__()
+        self.assertEqual(set(tdb_meta), set(tdb_meta.keys()))
 
         # test keys()
         self.assertSetEqual(set(tdb_meta.keys()), set(dict_meta.keys()))
 
         # test values() and items()
-        read_values = tdb_meta.values()
-        read_items = tdb_meta.items()
+        read_values = list(tdb_meta.values())
+        read_items = list(tdb_meta.items())
         self.assertEqual(len(read_values), len(read_items))
         for (item_key, item_value), value in zip(read_items, read_values):
             self.assertTrue(item_key in dict_meta)
@@ -161,7 +163,7 @@ class MetadataTest(DiskTestCase):
             self.assert_metadata_roundtrip(A.meta, test_vals)
 
         # test a 1 MB blob
-        blob = np.random.rand(int((1024 ** 2) / 8)).tobytes()
+        blob = np.random.rand(int((1024**2) / 8)).tobytes()
         with tiledb.Array(path, "w") as A:
             test_vals["bigblob"] = blob
             A.meta["bigblob"] = blob
@@ -200,7 +202,6 @@ class MetadataTest(DiskTestCase):
         with tiledb.Array(path) as A:
             self.assert_metadata_roundtrip(A.meta, test_vals)
 
-        # test resetting a key with a ndarray value to a non-ndarray value
         with tiledb.Array(path, "w") as A:
             A.meta["ndarray"] = 42
             test_vals["ndarray"] = 42
@@ -216,7 +217,6 @@ class MetadataTest(DiskTestCase):
         with tiledb.Array(path) as A:
             self.assert_metadata_roundtrip(A.meta, test_vals)
 
-        # test del ndarray key
         with tiledb.Array(path, "w") as A:
             del A.meta["ndarray"]
             del test_vals["ndarray"]
@@ -224,7 +224,6 @@ class MetadataTest(DiskTestCase):
         with tiledb.Array(path) as A:
             self.assert_metadata_roundtrip(A.meta, test_vals)
 
-        # test update
         with tiledb.Array(path, mode="w") as A:
             test_vals.update(ndarray=np.stack([ndarray, ndarray]), transp=ndarray.T)
             A.meta.update(ndarray=np.stack([ndarray, ndarray]), transp=ndarray.T)
@@ -253,7 +252,6 @@ class MetadataTest(DiskTestCase):
             with tiledb.Array(path, mode="w") as A:
                 A.meta["randint"] = int(randints[i])
                 A.meta["randutf8"] = randutf8s[i]
-                time.sleep(0.001)
 
         self.assertEqual(len(vfs.ls(os.path.join(path, "__meta"))), 100)
 
@@ -283,14 +281,13 @@ class MetadataTest(DiskTestCase):
         for _ in range(2):
             for i in range(write_count):
                 with tiledb.Array(path, mode="w") as A:
-                    A.meta[randutf8s[i] + u"{}".format(randints[i])] = int(randints[i])
+                    A.meta[randutf8s[i] + "{}".format(randints[i])] = int(randints[i])
                     A.meta[randutf8s[i]] = randutf8s[i]
-                    time.sleep(0.001)
 
         # test data
         with tiledb.Array(path) as A:
             for i in range(write_count):
-                key_int = randutf8s[i] + u"{}".format(randints[i])
+                key_int = randutf8s[i] + "{}".format(randints[i])
                 self.assertEqual(A.meta[key_int], randints[i])
                 self.assertEqual(A.meta[randutf8s[i]], randutf8s[i])
 
@@ -338,6 +335,34 @@ class MetadataTest(DiskTestCase):
         # test data again after consolidation
         with tiledb.Array(path) as A:
             for i in range(write_count):
-                key_int = randutf8s[i] + u"{}".format(randints[i])
+                key_int = randutf8s[i] + "{}".format(randints[i])
                 self.assertEqual(A.meta[key_int], randints[i])
                 self.assertEqual(A.meta[randutf8s[i]], randutf8s[i])
+
+    def test_ascii_metadata(self, capfd):
+        uri = self.path("test_ascii_metadata")
+
+        dom = tiledb.Domain(tiledb.Dim(domain=(0, 2), tile=1, dtype=np.int64))
+        att = tiledb.Attr(dtype=np.int64)
+        schema = tiledb.ArraySchema(sparse=True, domain=dom, attrs=(att,))
+        tiledb.Array.create(uri, schema)
+
+        metadata_test_aux.write_ascii(uri)
+
+        with tiledb.open(uri) as A:
+            assert A.meta["abc"] == b"xyz"
+            A.meta.dump()
+            assert_captured(capfd, "Type: DataType.STRING_ASCII")
+
+    def test_bytes_metadata(self, capfd):
+        path = self.path()
+        with tiledb.from_numpy(path, np.ones((5,), np.float64)):
+            pass
+
+        with tiledb.Array(path, mode="w") as A:
+            A.meta["bytes"] = b"blob"
+
+        with tiledb.Array(path, mode="r") as A:
+            assert A.meta["bytes"] == b"blob"
+            A.meta.dump()
+            assert_captured(capfd, "Type: DataType.BLOB")

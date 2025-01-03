@@ -1,5 +1,4 @@
 #include <pybind11/pybind11.h>
-//#include <tiledb/tiledb_experimental>
 #include <tiledb/tiledb.h>
 #include <tiledb/tiledb_experimental.h>
 
@@ -27,7 +26,7 @@ void init_schema_evolution(py::module &m) {
         tiledb_array_schema_evolution_t *evol_p;
         int rc = tiledb_array_schema_evolution_alloc(ctx_c, &evol_p);
         if (rc != TILEDB_OK) {
-          TPY_ERROR_LOC("Failed to allocate ArraySchemaEvolution");
+          TPY_ERROR_LOC(get_last_ctx_err_str(ctx_c, rc));
         }
 
         return new PyArraySchemaEvolution({ctx_c, evol_p});
@@ -42,7 +41,7 @@ void init_schema_evolution(py::module &m) {
              int rc = tiledb_array_schema_evolution_add_attribute(
                  inst.ctx_, inst.evol_, attr_c);
              if (rc != TILEDB_OK) {
-               TPY_ERROR_LOC("Failed to add attribute to ArraySchemaEvolution");
+               TPY_ERROR_LOC(get_last_ctx_err_str(inst.ctx_, rc));
              }
            })
       .def("drop_attribute",
@@ -50,16 +49,72 @@ void init_schema_evolution(py::module &m) {
              int rc = tiledb_array_schema_evolution_drop_attribute(
                  inst.ctx_, inst.evol_, attr_name.c_str());
              if (rc != TILEDB_OK) {
-               TPY_ERROR_LOC(
-                   "Failed to drop attribute from ArraySchemaEvolution");
+               TPY_ERROR_LOC(get_last_ctx_err_str(inst.ctx_, rc));
              }
            })
-      .def("array_evolve", [](ArraySchemaEvolution &inst, std::string uri) {
-        int rc = tiledb_array_evolve(inst.ctx_, uri.c_str(), inst.evol_);
-        if (rc != TILEDB_OK) {
-          TPY_ERROR_LOC("Failed to drop attribute from ArraySchemaEvolution");
-        }
-      });
+      .def("array_evolve",
+           [](ArraySchemaEvolution &inst, std::string uri) {
+             int rc = tiledb_array_evolve(inst.ctx_, uri.c_str(), inst.evol_);
+             if (rc != TILEDB_OK) {
+               TPY_ERROR_LOC(get_last_ctx_err_str(inst.ctx_, rc));
+             }
+           })
+      .def("set_timestamp_range",
+           [](ArraySchemaEvolution &inst, uint64_t timestamp) {
+             int rc = tiledb_array_schema_evolution_set_timestamp_range(
+                 inst.ctx_, inst.evol_, timestamp, timestamp);
+             if (rc != TILEDB_OK) {
+               TPY_ERROR_LOC(get_last_ctx_err_str(inst.ctx_, rc));
+             }
+           })
+      .def("add_enumeration",
+           [](ArraySchemaEvolution &inst, py::object enum_py) {
+             tiledb_enumeration_t *enum_c =
+                 (py::capsule)enum_py.attr("__capsule__")();
+             if (enum_c == nullptr)
+               TPY_ERROR_LOC("Invalid Enumeration!");
+             int rc = tiledb_array_schema_evolution_add_enumeration(
+                 inst.ctx_, inst.evol_, enum_c);
+             if (rc != TILEDB_OK) {
+               TPY_ERROR_LOC(get_last_ctx_err_str(inst.ctx_, rc));
+             }
+           })
+      .def("drop_enumeration",
+           [](ArraySchemaEvolution &inst, const std::string &enumeration_name) {
+             int rc = tiledb_array_schema_evolution_drop_enumeration(
+                 inst.ctx_, inst.evol_, enumeration_name.c_str());
+             if (rc != TILEDB_OK) {
+               TPY_ERROR_LOC(get_last_ctx_err_str(inst.ctx_, rc));
+             }
+           })
+      .def("extend_enumeration",
+           [](ArraySchemaEvolution &inst, py::object enum_py) {
+             tiledb_enumeration_t *enum_c =
+                 (py::capsule)enum_py.attr("__capsule__")();
+             if (enum_c == nullptr)
+               TPY_ERROR_LOC("Invalid Enumeration!");
+             int rc = tiledb_array_schema_evolution_extend_enumeration(
+                 inst.ctx_, inst.evol_, enum_c);
+             if (rc != TILEDB_OK) {
+               TPY_ERROR_LOC(get_last_ctx_err_str(inst.ctx_, rc));
+             }
+           })
+
+#if TILEDB_VERSION_MAJOR >= 2 && TILEDB_VERSION_MINOR >= 26
+      .def("expand_current_domain",
+           [](ArraySchemaEvolution &inst, py::object current_domain_py) {
+             tiledb_current_domain_t *current_domain_c =
+                 (py::capsule)current_domain_py.attr("__capsule__")();
+             if (current_domain_c == nullptr)
+               TPY_ERROR_LOC("Invalid Current Domain!");
+             int rc = tiledb_array_schema_evolution_expand_current_domain(
+                 inst.ctx_, inst.evol_, current_domain_c);
+             if (rc != TILEDB_OK) {
+               TPY_ERROR_LOC(get_last_ctx_err_str(inst.ctx_, rc));
+             }
+           })
+#endif
+      ;
 }
 
 }; // namespace tiledbpy

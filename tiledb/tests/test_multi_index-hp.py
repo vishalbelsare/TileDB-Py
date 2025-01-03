@@ -2,35 +2,49 @@
 # Property-based tests for Array.multi_index using Hypothesis
 #
 
-import tiledb
-from tiledb import SparseArray
-import numpy as np
-from numpy.testing import assert_array_equal
-
 import warnings
 
+import hypothesis as hp
+import numpy as np
 import pytest
-from tiledb.tests.common import checked_path
-from tiledb.tests.strategies import bounded_ntuple, ranged_slices
-
-from hypothesis import given, assume
+from hypothesis import assume, given
 from hypothesis import strategies as st
+from numpy.testing import assert_array_equal
+
+import tiledb
+from tiledb import SparseArray
+
+from .strategies import bounded_ntuple, ranged_slices
 
 
 def is_boundserror(exc: Exception):
     assert str(exc) != ""
 
-    vals = ["out of domain bounds", "Cannot add range to dimension"]
+    vals = [
+        "out of domain bounds",
+        "Cannot add range to dimension",
+        "cannot be larger than the higher bound",
+    ]
 
     return any(x in str(exc) for x in vals)
 
 
-def _direct_query_ranges(array: SparseArray, ranges):
+def _direct_query_ranges(array: SparseArray, ranges, order):
+    order_map = {"C": 0, "F": 1, "U": 3}
+    layout = order_map[order]
     with tiledb.scope_ctx() as ctx:
-        q = tiledb.main.PyQuery(ctx, array, ("a",), (), 0, False)
-        q.set_ranges(ranges)
+        q = tiledb.main.PyQuery(ctx, array, ("a",), (), layout, False)
+        subarray = tiledb.Subarray(array)
+        subarray.add_ranges(ranges)
+        q.set_subarray(subarray)
+
         q.submit()
-    return {k: v[0].view(array.attr(0).dtype) for k, v in q.results().items()}
+
+    if ranges == [[]]:
+        # empty range should give empty result
+        return {k: [] for k in q.results()}
+    else:
+        return {k: v[0].view(array.attr(0).dtype) for k, v in q.results().items()}
 
 
 # Compound strategies to build valid inputs for multi_index
@@ -73,11 +87,14 @@ class TestMultiIndexPropertySparse:
 
         return uri
 
-    @given(st.lists(bounded_ntuple(length=2, min_value=-100, max_value=100)))
-    def test_multi_index_two_way_query(self, sparse_array_1d, ranges):
+    @given(
+        order=st.sampled_from(["C", "F", "U"]),
+        ranges=st.lists(bounded_ntuple(length=2, min_value=-100, max_value=100)),
+    )
+    @hp.settings(deadline=None)
+    def test_multi_index_two_way_query(self, order, ranges, sparse_array_1d):
         """This test checks the result of "direct" range queries using PyQuery
         against the result of `multi_index` on the same ranges."""
-
         uri = sparse_array_1d
 
         assert isinstance(uri, str)
@@ -85,8 +102,8 @@ class TestMultiIndexPropertySparse:
 
         try:
             with tiledb.open(uri) as A:
-                r1 = A.multi_index[ranges]["a"]
-                r2 = _direct_query_ranges(A, [ranges])["a"]
+                r1 = A.query(order=order).multi_index[ranges]["a"]
+                r2 = _direct_query_ranges(A, [ranges], order)["a"]
 
                 assert_array_equal(r1, r2)
         except tiledb.TileDBError as exc:
@@ -97,8 +114,8 @@ class TestMultiIndexPropertySparse:
             raise
 
     @given(index_obj)
+    @hp.settings(deadline=None)
     def test_multi_index_inputs(self, sparse_array_1d, ind):
-
         # TODO
         # currently we don't have a comparison target/mockup to check
         # as there is no direct numpy equivalent for this indexing mode

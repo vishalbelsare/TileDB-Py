@@ -1,87 +1,115 @@
 name: TileDB Python CI
 
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  S3_BUCKET: ${{ vars.S3_BUCKET }}
+  TILEDB_NAMESPACE: ${{ vars.TILEDB_NAMESPACE }}
+  TILEDB_TOKEN: ${{ secrets.TILEDB_TOKEN }}
 
 jobs:
   build:
-
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-10.15, windows-latest]
-        python-version: [3.7, 3.8, 3.9]
+        os:
+          - ubuntu-latest
+          - macos-13
+          # libfaketime tests fail on macos arm. Disable tests for now.
+          # - macos-14
+          - windows-latest
+        python-version: [ "3.9", "3.10", "3.11", "3.12", "3.13" ]
+      fail-fast: false
     env:
-      MACOSX_DEPLOYMENT_TARGET: 10.14
+      MACOSX_DEPLOYMENT_TARGET: "11"
     steps:
-    - name: Checkout TileDB-Py `dev`
-      uses: actions/checkout@v2
+      - name: Checkout TileDB-Py `main`
+        uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Setup MSVC toolset (VS 2022)
+        uses: TheMrMilchmann/setup-msvc-dev@v3
+        if: startsWith(matrix.os, 'windows')
+        with:
+          arch: x64
 
-    # Print python and pip version information for debugging.
-    - name: 'Print python version in bash task'
-      run: |
-        echo '==== Python information ===='
-        which python
-        which pip
-        python --version
-        echo '============================'
-      shell: bash
+      - name: Install Ninja (VS 2022)
+        uses: seanmiddleditch/gha-setup-ninja@v4
+        if: startsWith(matrix.os, 'windows')
 
-    - name: 'Print env'
-      run: printenv
-      shell: bash
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: 'Install dependencies'
-      run: python -m pip install --upgrade -r misc/requirements_ci.txt
-      shell: bash
+      - name: Print Python version
+        run: |
+          which python
+          which pip
+          python --version
 
-    - name: 'Build TileDB and TileDB-Py extension (Windows)'
-      run: |
-        python setup.py build_ext --inplace
-        python setup.py install
-      shell: bash
-      if: matrix.os == 'windows-latest'
+      - name: Print env
+        run: printenv
 
-    - name: 'Build TileDB and TileDB-Py extension (POSIX)'
-      run: |
-        set -xeo pipefail
-        python setup.py build_ext --inplace --werror
-        python setup.py install
-      shell: bash
-      if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-10.15'
+      - name: Print pip debug info
+        run: pip debug --verbose
 
-    - name: 'Run tests'
-      run: |
-        set -xeo pipefail
+      # Remove after upstream PR fully-deployed:
+      # - https://github.com/actions/runner-images/pull/7125
+      - name: "Install homebrew dependencies"
+        run: brew install pkg-config
+        if: startsWith(matrix.os, 'macos')
 
-        pytest -vv
+      - name: "Install libfaketime (linux and macOS)"
+        if: ${{ ! startsWith(matrix.os, 'windows') }}
+        run: |
+          git clone https://github.com/wolfcw/libfaketime/
+          cd libfaketime
+          sudo make install
+          cd ..
 
-        # Test wheel build, install, and run
-        python setup.py bdist_wheel
-        #whl_file=`pwd`/dist/`ls dist/*.whl`
-        mkdir /tmp/wheel_test
-        cp dist/*.whl /tmp/wheel_test
-        pushd /tmp/wheel_test
-        ls
-        pip install *.whl
-        python -c 'import tiledb ; tiledb.libtiledb.version()'
-      shell: bash
+      - name: "Build and Install TileDB-Py"
+        # We use pipx here to produce wheel/sdist to upload as artifact in case of error
+        run: |
+          pipx run --python ${{ matrix.python-version }} build
+          WHEEL_NAME=$(ls dist/*.whl)
+          pip install --verbose ${WHEEL_NAME}[test]
 
-    - name: 'Print log files (failed build only)'
-      run: |
-        set -xeo pipefail
-        # Display log files if the build failed
-        echo 'Dumping log files for failed build'
-        echo '----------------------------------'
-        for f in $(find $BUILD_REPOSITORY_LOCALPATH/build -name *.log);
-          do echo '------'
-             echo $f
-             echo '======'
-             cat $f
-          done;
-      shell: bash
-      if: ${{ failure() }} # only run this job if the build step failed
+      - name: "Run tests"
+        run: |
+          PROJECT_CWD=$PWD
+          rm tiledb/__init__.py
+          cd /tmp
+          pytest -vv --showlocals $PROJECT_CWD
+
+      - name: "Re-run tests without pandas"
+        run: |
+          pip uninstall -y pandas
+          pytest -vv --showlocals $PROJECT_CWD
+
+      - name: "Print log files (failed build only)"
+        run: |
+          set -xeo pipefail
+          # Display log files if the build failed
+          echo 'Dumping log files for failed build'
+          echo '----------------------------------'
+          for f in $(find build -name *.log);
+            do echo '------'
+               echo $f
+               echo '======'
+               cat $f
+            done;
+        if: failure()
+
+      - name: "Upload files for debug"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ matrix.python-version }}
+          path: "."

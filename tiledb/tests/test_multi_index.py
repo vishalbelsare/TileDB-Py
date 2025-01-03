@@ -11,27 +11,28 @@ TODO
 import random
 
 import numpy as np
-from numpy.testing import assert_array_equal
 import pytest
+from numpy.testing import assert_array_equal
 
 import tiledb
 from tiledb.multirange_indexing import getitem_ranges, mr_dense_result_shape
-from tiledb.tests.common import (
-    DiskTestCase,
-    assert_tail_equal,
-    intspace,
+
+from .common import (
     SUPPORTED_DATETIME64_DTYPES,
+    DiskTestCase,
+    assert_dict_arrays_equal,
+    assert_tail_equal,
+    has_pandas,
+    has_pyarrow,
+    intspace,
     rand_datetime64_array,
-    assert_all_arrays_equal,
 )
 
-import hypothesis.extra.numpy as npst
 
-
-def make_1d_dense(path, attr_name="", attr_dtype=np.int64):
+def make_1d_dense(path, attr_name="", attr_dtype=np.int64, dim_dtype=np.uint64):
     a_orig = np.arange(36)
 
-    dom = tiledb.Domain(tiledb.Dim(domain=(0, 35), tile=35, dtype=np.uint64))
+    dom = tiledb.Domain(tiledb.Dim(domain=(0, 35), tile=35, dtype=dim_dtype))
     att = tiledb.Attr(name=attr_name, dtype=attr_dtype)
     schema = tiledb.ArraySchema(domain=dom, attrs=(att,), sparse=False)
     tiledb.DenseArray.create(path, schema)
@@ -138,6 +139,73 @@ class TestMultiRangeAuxiliary(DiskTestCase):
 
 
 class TestMultiRange(DiskTestCase):
+    @pytest.mark.skipif(
+        not has_pyarrow() or not has_pandas(),
+        reason="pyarrow>=1.0 and/or pandas>=1.0,<3.0 not installed",
+    )
+    def test_return_arrow_indexers(self):
+        uri = self.path("multirange_behavior_sparse")
+
+        schema = tiledb.ArraySchema(
+            domain=tiledb.Domain(
+                tiledb.Dim(name="idx", domain=(-5, 5), dtype=np.int64)
+            ),
+            attrs=[tiledb.Attr(name="data", dtype=np.int64)],
+        )
+        tiledb.Array.create(uri, schema)
+        data = np.random.randint(-10, 10, size=11)
+
+        with tiledb.open(uri, "w") as A:
+            A[:] = data
+
+        with tiledb.open(uri, "r") as A:
+            with self.assertRaisesRegex(
+                tiledb.TileDBError,
+                "Cannot initialize return_arrow with use_arrow=False",
+            ):
+                q = A.query(return_arrow=True, use_arrow=False)
+
+            q = A.query(return_arrow=True)
+
+            with self.assertRaisesRegex(
+                tiledb.TileDBError,
+                "`return_arrow=True` requires .df indexer",
+            ):
+                q[:]
+
+            with self.assertRaisesRegex(
+                tiledb.TileDBError,
+                "`return_arrow=True` requires .df indexer",
+            ):
+                q.multi_index[:]
+
+            assert_array_equal(q.df[:]["data"], data)
+
+    @pytest.mark.skipif(
+        not has_pyarrow() or not has_pandas(),
+        reason="pyarrow>=1.0 and/or pandas>=1.0,<3.0 not installed",
+    )
+    @pytest.mark.parametrize("sparse", [True, False])
+    def test_return_large_arrow_table(self, sparse):
+        num = 2**16 - 1
+        uri = self.path("test_return_large_arrow_table")
+        dom = tiledb.Domain(tiledb.Dim(domain=(0, num - 1), dtype=np.uint16))
+        att = tiledb.Attr(dtype=np.uint64)
+        schema = tiledb.ArraySchema(domain=dom, attrs=(att,), sparse=sparse)
+        tiledb.Array.create(uri, schema)
+
+        expected_data = np.arange(num)
+
+        with tiledb.open(uri, "w") as A:
+            if sparse:
+                A[np.arange(num)] = expected_data
+            else:
+                A[:] = expected_data
+
+        with tiledb.open(uri, "r") as arr:
+            actual_data = arr.query(return_arrow=True).df[:]
+            assert_array_equal(actual_data[:][""], expected_data)
+
     def test_multirange_behavior(self):
         uri = self.path("multirange_behavior_sparse")
 
@@ -208,17 +276,17 @@ class TestMultiRange(DiskTestCase):
         make_1d_dense(path, attr_name=attr_name)
 
         with tiledb.DenseArray(path) as A:
-            ranges = (((0, 0),),)
+            ranges = [slice(0, 0)]
             expected = np.array([0], dtype=np.int64)
-            res = tiledb.libtiledb.multi_index(A, (attr_name,), ranges)
+            res = A.multi_index[ranges]
             a = res[attr_name]
             assert_array_equal(a, expected)
             self.assertEqual(a.dtype, expected.dtype)
-            self.assertEqual(len(res.keys()), 2)
+            self.assertEqual(len(res.keys()), 1)
 
-            ranges2 = (((1, 1), (5, 8)),)
+            ranges2 = [slice(1, 1), slice(5, 8)]
             expected2 = np.array([1, 5, 6, 7, 8], dtype=np.int64)
-            a2 = tiledb.libtiledb.multi_index(A, (attr_name,), ranges2)[attr_name]
+            a2 = A.multi_index[ranges2][attr_name]
             assert_array_equal(a2, expected2)
             self.assertEqual(a2.dtype, expected2.dtype)
 
@@ -252,12 +320,12 @@ class TestMultiRange(DiskTestCase):
                 36,
             ],
             dtype=np.uint64,
-        )
+        ).reshape((5, 4))
 
-        ranges = (((0, 0), (5, 8)),)
+        ranges = [slice(0, 0), slice(5, 8)]
 
         with tiledb.DenseArray(path) as A:
-            a = tiledb.libtiledb.multi_index(A, (attr_name,), ranges)[attr_name]
+            a = A.multi_index[ranges][attr_name]
 
             assert_array_equal(a, expected)
 
@@ -267,12 +335,12 @@ class TestMultiRange(DiskTestCase):
 
         make_2d_dense(path, attr_name=attr_name)
 
-        expected = np.arange(1, 21)
+        expected = np.arange(1, 21).reshape((5, 4))
 
-        ranges = (((0, 4),), ((0, 3),))
+        ranges = slice(0, 4), slice(0, 3)
 
         with tiledb.DenseArray(path) as A:
-            a = tiledb.libtiledb.multi_index(A, (attr_name,), ranges)[attr_name]
+            a = A.multi_index[ranges][attr_name]
             assert_array_equal(a, expected)
 
             # test slicing start=end on 1st dim at 0 (bug fix)
@@ -407,7 +475,6 @@ class TestMultiRange(DiskTestCase):
                 A[coords] = coords
 
             with tiledb.open(path) as A:
-
                 res = A.multi_index[slice(coords[0], coords[-1])]
                 assert_array_equal(res[attr_name], coords)
                 assert_array_equal(res["__dim_0"].astype(dtype), coords)
@@ -632,7 +699,7 @@ class TestMultiRange(DiskTestCase):
 
         uri = self.path("test_fix_473_sparse_index_bug")
         dom = tiledb.Domain(
-            tiledb.Dim(name="x", domain=(0, 2 ** 64 - 2), tile=1, dtype=np.uint64)
+            tiledb.Dim(name="x", domain=(0, 2**64 - 2), tile=1, dtype=np.uint64)
         )
         schema = tiledb.ArraySchema(
             domain=dom, sparse=True, attrs=[tiledb.Attr(name="a", dtype=np.uint64)]
@@ -662,6 +729,7 @@ class TestMultiRange(DiskTestCase):
                 np.array([], dtype=np.uint64),
             )
 
+    @pytest.mark.skipif(not has_pandas(), reason="pandas>=1.0,<3.0 not installed")
     def test_fixed_multi_attr_df(self):
         uri = self.path("test_fixed_multi_attr_df")
         dom = tiledb.Domain(
@@ -695,6 +763,7 @@ class TestMultiRange(DiskTestCase):
             result = A.query(attrs=["111"], use_arrow=False)
             assert_array_equal(result.df[0]["111"], data_111)
 
+    @pytest.mark.skipif(not has_pandas(), reason="pandas>=1.0,<3.0 not installed")
     def test_var_multi_attr_df(self):
         uri = self.path("test_var_multi_attr_df")
         dom = tiledb.Domain(
@@ -776,6 +845,7 @@ class TestMultiRange(DiskTestCase):
             assert A.nonempty_domain() is None
             assert_array_equal(A.multi_index[:][""], A[:][""])
 
+    @pytest.mark.skipif(not has_pandas(), reason="pandas>=1.0,<3.0 not installed")
     def test_multi_index_query_args(self):
         uri = self.path("test_multi_index_query_args")
         schema = tiledb.ArraySchema(
@@ -795,8 +865,174 @@ class TestMultiRange(DiskTestCase):
             A[np.arange(10)] = {"a": a, "b": b}
 
         with tiledb.open(uri, mode="r") as A:
-            q = A.query(attr_cond=tiledb.QueryCondition("a >= 5"), attrs=["a"])
+            q = A.query(cond="a >= 5", attrs=["a"])
             assert {"a", "dim"} == q.multi_index[:].keys() == q[:].keys()
             assert_array_equal(q.multi_index[:]["a"], q[:]["a"])
             assert_array_equal(q.multi_index[:]["a"], q.df[:]["a"])
             assert all(q[:]["a"] >= 5)
+
+    @pytest.mark.skipif(not has_pandas(), reason="pandas>=1.0,<3.0 not installed")
+    def test_multi_index_timing(self):
+        path = self.path("test_multi_index_timing")
+        attr_name = "a"
+
+        make_1d_dense(path, attr_name=attr_name)
+        tiledb.stats_enable()
+        with tiledb.open(path) as A:
+            assert_array_equal(A.df[:][attr_name], np.arange(36))
+            internal_stats = tiledb.main.python_internal_stats()
+            assert "py.getitem_time :" in internal_stats
+            assert "py.getitem_time.buffer_conversion_time :" in internal_stats
+            assert "py.getitem_time.pandas_index_update_time :" in internal_stats
+        tiledb.stats_disable()
+
+    @pytest.mark.skipif(not has_pandas(), reason="pandas>=1.0,<3.0 not installed")
+    def test_fixed_width_char(self):
+        uri = self.path("test_fixed_width_char")
+        schema = tiledb.ArraySchema(
+            domain=tiledb.Domain(tiledb.Dim(name="dim", domain=(0, 2), dtype=np.uint8)),
+            attrs=[tiledb.Attr(dtype="|S3")],
+        )
+        tiledb.Array.create(uri, schema)
+
+        data = np.array(["cat", "dog", "hog"], dtype="|S3")
+
+        with tiledb.open(uri, mode="w") as A:
+            A[:] = data
+
+        with tiledb.open(uri, mode="r") as A:
+            assert all(A.query(use_arrow=True).df[:][""] == data)
+
+    @pytest.mark.skipif(not has_pandas(), reason="pandas>=1.0,<3.0 not installed")
+    def test_empty_idx(self):
+        uri = self.path("test_empty_idx")
+
+        schema = tiledb.ArraySchema(
+            domain=tiledb.Domain(tiledb.Dim(name="dim", domain=(0, 9), dtype=np.uint8)),
+            sparse=True,
+            attrs=[tiledb.Attr(name="a", dtype=np.float64)],
+        )
+        tiledb.Array.create(uri, schema)
+
+        data = np.array(np.random.randint(10, size=10), dtype=np.float64)
+
+        with tiledb.open(uri, mode="w") as A:
+            A[np.arange(10)] = data
+
+        with tiledb.open(uri, mode="r") as A:
+            assert_array_equal(A.df[tiledb.EmptyRange]["a"], [])
+            assert_array_equal(A.multi_index[tiledb.EmptyRange]["a"], [])
+            assert_array_equal(A.df[[]]["a"], [])
+            assert_array_equal(A.multi_index[[]]["a"], [])
+            assert_array_equal(A.df[()]["a"], [])
+            assert_array_equal(A.multi_index[()]["a"], [])
+
+
+# parametrize dtype and sparse
+@pytest.mark.parametrize(
+    "dim_dtype",
+    [
+        np.int64,
+        np.uint64,
+        np.int32,
+        np.uint32,
+        np.int16,
+        np.uint16,
+        np.int8,
+        np.uint8,
+    ],
+)
+class TestMultiIndexND(DiskTestCase):
+    def test_multi_index_ndarray(self, dim_dtype):
+        # TODO support for dense?
+        sparse = True  # ndarray indexing currently only supported for sparse
+
+        path = self.path("test_multi_index_ndarray")
+
+        ncells = 10
+        data = np.arange(ncells - 1)
+        coords = np.arange(ncells - 1)
+
+        # use negative range for sparse
+        if sparse and np.issubdtype(dim_dtype, np.signedinteger):
+            coords -= 4
+
+        dom = tiledb.Domain(
+            tiledb.Dim(domain=(coords.min(), coords.max()), dtype=dim_dtype)
+        )
+        att = tiledb.Attr(dtype=np.int8)
+        schema = tiledb.ArraySchema(domain=dom, attrs=(att,), sparse=sparse)
+        tiledb.Array.create(path, schema)
+
+        with tiledb.open(path, "w") as A:
+            if sparse:
+                A[coords] = data
+            else:
+                A[:] = data
+
+        with tiledb.open(path) as A:
+            assert_dict_arrays_equal(
+                A.multi_index[coords.tolist()], A.multi_index[coords]
+            )
+            assert_dict_arrays_equal(
+                A.multi_index[coords.tolist()], A.multi_index[coords]
+            )
+
+    def test_multi_index_ndarray_2d(self, dim_dtype):
+        sparse = False
+
+        path = self.path("test_multi_index_ndarray_2d")
+
+        ncells = 10
+        ext = ncells - 1
+        if sparse:
+            data = np.arange(ext)
+        else:
+            data = np.arange(ext**2).reshape(ext, ext)
+        d1_coords = np.arange(ext)
+        d2_coords = np.arange(ext, 0, -1)
+
+        # use negative range for sparse
+        if sparse and np.issubdtype(dim_dtype, np.signedinteger):
+            d1_coords -= 4
+
+        d1 = tiledb.Dim(
+            name="d1", domain=(d1_coords.min(), d1_coords.max()), dtype=dim_dtype
+        )
+        d2 = tiledb.Dim(
+            name="d2", domain=(d2_coords.min(), d2_coords.max()), dtype=dim_dtype
+        )
+        dom = tiledb.Domain([d1, d2])
+
+        att = tiledb.Attr(dtype=np.int8)
+        schema = tiledb.ArraySchema(domain=dom, attrs=(att,), sparse=sparse)
+        tiledb.Array.create(path, schema)
+
+        with tiledb.open(path, "w") as A:
+            if sparse:
+                A[d1_coords.tolist(), d2_coords.tolist()] = {"": data}
+            else:
+                A[:] = data
+                # raise ValueError("Test only support sparse")
+
+        with tiledb.open(path) as A:
+            assert_dict_arrays_equal(
+                A.multi_index[d1_coords.tolist(), d2_coords.tolist()],
+                A.multi_index[d1_coords, d2_coords],
+            )
+
+            # note: np.flip below because coords are in reverse order, which is how
+            #       tiledb will return the results for the first query, but not second
+            assert_dict_arrays_equal(
+                A.multi_index[d1_coords.tolist(), np.flip(d2_coords.tolist())],
+                A.multi_index[d1_coords, :],
+            )
+
+            slc = slice(0, ncells - 1, 2)
+            assert_dict_arrays_equal(
+                A.multi_index[d1_coords[slc].tolist(), :],
+                A.multi_index[d1_coords[slc], :],
+            )
+            assert_dict_arrays_equal(
+                A.multi_index[:, d2_coords[slc]], A.multi_index[:, d2_coords[slc]]
+            )
